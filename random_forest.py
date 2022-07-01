@@ -24,16 +24,12 @@ def parse_excell(input_file):
     return parsed_df
 
 
-def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
+def train_test_rfc(eff_df, non_eff_df, path_to_trained_model):  #, hydrophob_df):
     original_common_df = pd.concat([eff_df, non_eff_df], ignore_index=True, join="inner")
     original_common_df.replace([True, False], [1, 0], inplace=True)
 
     # EFF DF for Random Forest
     eff_df["name"] = ["effectors"] * len(eff_df)
-    # eff_df["sequence length"] = [True] * len(eff_df)
-    ## length selection later
-    # eff_min_len = np.min(eff_df["sequence length"])
-    # eff_max_len = np.max(eff_df["sequence length"])
 
     # NON-EFF DF for Random Forest
     non_eff_df["name"] = ["non_effectors"] * len(non_eff_df)
@@ -49,21 +45,11 @@ def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
     non_eff_df = non_eff_df.drop(non_eff_df.index[index_to_drop])  # drop not considered rows
     non_eff_df = non_eff_df.drop("description", 1)  # to make the two dataframe compatible for the merging process
 
-    # non_eff_df["sequence length"] = [True if eff_min_len > p_len > eff_max_len
-    #                                  else False for p_len in non_eff_df["sequence length"]]
-    # i = 0
-    # for el in non_eff_df["sequence length"]:
-    #     if eff_min_len < el < eff_max_len:
-    #         print(f"TRUE\n{el}")
-    #         i += 1
-    #     else:
-    #         print(".")
-
     # COMBINE DFs (taking only common features)
     common_df = pd.concat([eff_df, non_eff_df], ignore_index=True, join="inner")
     common_df.replace([True, False], [1, 0], inplace=True)
 
-    # ADD HYDROPHOBICITY PREDICTION TO COMMON DF
+    # ADD HYDROPHOBICITY PREDICTION TO COMMON DF (da rivedere)
     # for col in hydrophob_df:
     #     common_df[col] = list(hydrophob_df[col])
 
@@ -71,38 +57,25 @@ def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
     x = common_df[list(common_df.columns)[1:]]  # features=variables
     y = common_df["name"]  # labels=output
 
-    ## SPLIT DATASET (TRAIN/TEST - 70/30)
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3)
-    # print(f"x_train\n{original_common_df.iloc[list(x_train.index)]['name']}")
-    # print(f"x_test\n{x_test}")
-
-    # ## CREATE A GAUSSIAN CLASSIFIER
-    # clf = RandomForestClassifier(n_estimators=100)  # number of trees in the forest
-    # ## SELECT BEST n_estimators
-    # print("BEGIN best parameters selection for Random Forest")
-    # params_to_test = {"n_estimators": [50, 75, 100, 1000, 5000]}
-    # grid_search = GridSearchCV(clf, params_to_test, n_jobs=4)
-    # grid_search.fit(x_train, y_train)
-    # print("FINISH - best parameters selection")
-    # best_params = grid_search.best_params_
-    # print(best_params)
-    # clf = RandomForestClassifier(**best_params)
-    # clf.fit(x_train, y_train)
-    ## K-fold CROSS-VALIDATION
-    kf3 = KFold(n_splits=3, shuffle=True)
+    ## CREATE THE RANDOM FOREST CLASSIFIER
+    ### K-fold CROSS-VALIDATION
+    #### ITERATIVELY ESTIMATE THE BEST NUMBER OF DECISION TREES IN THE FOREST
+    # shuffling is useful because positive and negative elements are ordered in the dataframe and this will help to
+    # randomly pick the elements for each fold
+    kf5 = KFold(n_splits=5, shuffle=True)
     i = 1
     acc = []
-    # RANDOM STATE IS IMPORTANT FOR FUTURE REPLICATION
-    trained_clf = RandomForestClassifier(random_state=42)
-    for train_index, test_index in kf3.split(common_df):
-        # print(f"train_set {common_df.iloc[train_index]}\ntest_set {common_df.iloc[test_index]}")
+
+    trained_clf = RandomForestClassifier(random_state=42)  # RANDOM STATE IS IMPORTANT FOR FUTURE REPLICATION
+    # SPLITTING
+    for train_index, test_index in kf5.split(common_df):
         x_train = common_df.iloc[train_index].loc[:, list(common_df.columns)[1:]]
         x_test = common_df.iloc[test_index][list(common_df.columns)[1:]]
         y_train = common_df.iloc[train_index].loc[:, "name"]
         y_test = common_df.iloc[test_index]["name"]
 
-        # ## CREATE A GAUSSIAN CLASSIFIER
-        clf = RandomForestClassifier(n_estimators=100, random_state=42)  # number of trees in the forest
+        # ith fold RANDOM FOREST
+        clf = RandomForestClassifier(n_estimators=100, random_state=42)  # n_estimators = number of trees in the forest
         ## SELECT BEST n_estimators
         print("BEGIN best parameters selection for Random Forest")
         params_to_test = {"n_estimators": [50, 75, 100, 1000, 5000]}
@@ -110,42 +83,16 @@ def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
         grid_search.fit(x_train, y_train)
         print("FINISH - best parameters selection")
         best_params = grid_search.best_params_
-        print(best_params)
         clf = RandomForestClassifier(**best_params, random_state=42)
 
-        ## TRAIN THE MODEL USING THE TRAINING SETS y_pred = clf.predict(x_test)
-        # clf = RandomForestClassifier(n_estimators=100)
+        ## TRAIN THE MODEL USING ith-FOLD TRAINING SETS
         clf.fit(x_train, y_train)
-        print(f"Accuracy for the fold no. {i} on the test set: {metrics.accuracy_score(y_test, clf.predict(x_test))}")
-        i += 1
-        y_pred = clf.predict(x_test)
 
         ## ACCURACY
-        print(f"Accuracy: {metrics.accuracy_score(y_test, y_pred)}")
+        y_pred = clf.predict(x_test)
+        tmp_accuracy = metrics.accuracy_score(y_test, y_pred)
+        print(f"TEST set accuracy for the fold no. {i}: {tmp_accuracy}")
         acc.append(metrics.accuracy_score(y_test, y_pred))
-        # first iteration: Accuracy: 0.9894736842105263
-        # second, third, forth, ..., : Accuracy: 1.0
-
-        ## FEATURE IMPORTANCE
-        feature_imp = pd.Series(clf.feature_importances_, index=list(common_df.columns)[1:]).sort_values(ascending=False)
-        print(f"Feature importance:\n{feature_imp}")
-        # sequence length 0.377685
-        # signal peptide 0.297652
-        # Phob signal peptide 0.231584
-        # MYRISTYL 0.044473
-        # disordered regions 0.015679
-        # PKC_PHOSPHO_SITE 0.011141
-        # ASN_GLYCOSYLATION 0.008138
-        # CAMP_PHOSPHO_SITE 0.003997
-        # CK2_PHOSPHO_SITE 0.003556
-        # Phob transmembrane domain 0.003174
-        # AMIDATION 0.002279
-        # TYR_PHOSPHO_SITE_1 0.000642
-        # transmembrane domain 0.000000
-
-        ## CONFUSION MATRIX
-        conf_matrix = metrics.confusion_matrix(y_test, y_pred)
-        print(f"\nconfusion matrix\n{conf_matrix}")
 
         ## F-measure
         f_score = metrics.f1_score(y_test, y_pred, average="macro")
@@ -156,14 +103,19 @@ def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
         precision, recall, _ = precision_recall_curve(y_test_hot_encode, y_pred_hot_encode, pos_label=1)
         print(f"Precision coordinates: {precision}\nRecall(Sensitivity) coordinates: {recall}")
 
-        ## checks
-        print(f"Y_test\n{original_common_df.iloc[list(y_test.index)]['name']}")
-        print(f"Y_pred\n{y_pred}")
-        trained_clf = clf
+        ## CONFUSION MATRIX
+        conf_matrix = metrics.confusion_matrix(y_test, y_pred)
+        print(f"\nconfusion matrix\n{conf_matrix}")
 
-    print(f"final {trained_clf.predict(common_df.iloc[list(range(120, 300))].loc[:, list(common_df.columns)[1:]])}")
-    print(np.mean(acc))
-    joblib.dump(trained_clf, "random_forest_model.pkl")
+        ## FEATURE IMPORTANCE
+        feat_imp = pd.Series(clf.feature_importances_, index=list(common_df.columns)[1:]).sort_values(ascending=False)
+        print(f"Feature importance:\n{feat_imp}")
+
+        trained_clf = clf
+        i += 1
+
+    print(f"Averaged accuracy for {i-1}-fold cross validation: {np.mean(acc)}")
+    joblib.dump(trained_clf, f"{path_to_trained_model}/random_forest_model.pkl")
     return trained_clf
 
 
@@ -176,6 +128,8 @@ if __name__ == '__main__':
                         help="TSV file of feature predictions")
     parser.add_argument("-ne", "--non_effector_predictions",
                         help="TSV file of feature predictions")
+    parser.add_argument("-o", "--output_path",
+                        help="path to save the random forest model")
     parser.add_argument("-cl", "--classifier",
                         help="pickle file of the random forest model to classify proteins")
     parser.add_argument("--apply_model",
@@ -188,10 +142,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if not args.apply_model:
-        train_test_rfc()
+        train_test_rfc(parse_table(args.effector_predictions),
+                       parse_table(args.non_effector_predictions),
+                       args.output_path)
     else:
-        rfc = joblib.load(args.classifier)
-        rfc.predict()
+        rf_classifier = joblib.load(args.classifier)
+        rf_classifier.predict()
 
 
 ## RESULTS AFTER HYDROPHOBICITY PROFILE ADDITION
