@@ -1,13 +1,13 @@
 import pandas as pd
 import numpy as np
+import joblib
+import argparse
 from sklearn.model_selection import train_test_split  # to split the dataset
 from sklearn.ensemble import RandomForestClassifier  # random forest model
 from sklearn.model_selection import GridSearchCV
 from sklearn import metrics  # to calculate the accuracy of the model
 from sklearn.metrics import (precision_recall_curve, PrecisionRecallDisplay)
 from sklearn.model_selection import KFold
-import joblib
-import matplotlib as plt
 
 
 def parse_table(input_file, h=False):
@@ -24,8 +24,7 @@ def parse_excell(input_file):
     return parsed_df
 
 
-def combined_df(eff_df, non_eff_df):  #, hydrophob_df):
-    # modify the dataframes to be useful for plotting
+def train_test_rfc(eff_df, non_eff_df):  #, hydrophob_df):
     original_common_df = pd.concat([eff_df, non_eff_df], ignore_index=True, join="inner")
     original_common_df.replace([True, False], [1, 0], inplace=True)
 
@@ -168,104 +167,31 @@ def combined_df(eff_df, non_eff_df):  #, hydrophob_df):
     return trained_clf
 
 
-def pm_predictions(df, eff_df, non_eff_df):
-    # modify the dataframes to be useful for plotting
-    # EFF DF
-    eff_df["name"] = ["effectors"] * len(eff_df)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(usage="%(prog)s [options]",
+                                     description="",
+                                     epilog="")
 
-    # NON-EFF DF
-    non_eff_df["name"] = ["non_effectors"] * len(non_eff_df)
-    ## NO LENGTH SELECTION
-    index_to_drop = []
-    for i in range(len(non_eff_df)):
-        desc = non_eff_df["description"].iloc[i]
-        if "effector" in desc or "Effector" in desc or "hypothetical" in desc or "partial" in desc or "ribosomal" in desc \
-                or "Uncharacterized" in desc or "Putative" in desc:
-            index_to_drop.append(i)
+    parser.add_argument("-e", "--effector_predictions",
+                        help="TSV file of feature predictions")
+    parser.add_argument("-ne", "--non_effector_predictions",
+                        help="TSV file of feature predictions")
+    parser.add_argument("-cl", "--classifier",
+                        help="pickle file of the random forest model to classify proteins")
+    parser.add_argument("--apply_model",
+                        action="store_true",
+                        help="when the training is already done, use --apply_model to classify new data")
 
-    non_eff_df = non_eff_df.drop(non_eff_df.index[index_to_drop])  # drop not considered rows
-    non_eff_df = non_eff_df.drop("description", 1)  # to make the two dataframe compatible for the merging process
+    # eff = "...effectors/analysis/prediction_tools/effector_protein_feature_prediction.tsv"
+    # non_eff = "...effectors/analysis/prediction_tools/062022non_effector_protein_feature_prediction.tsv"
+    # hydrophob_pred = "/home/giulia/Workspace/PhytoPhD/effectors/analysis/KD/hydrophob_comparisons.tsv"
 
-    eff_min_len = np.min(eff_df["sequence length"])
-    eff_max_len = np.max(eff_df["sequence length"])
-    non_eff_df["sequence length"] = [True if eff_min_len > p_len > eff_max_len
-                                     else False for p_len in non_eff_df["sequence length"]]
-    eff_df["sequence length"] = [True] * len(eff_df)
-
-    # COMBINE DFs (taking only common features)
-    common_df = pd.concat([eff_df, non_eff_df], ignore_index=True, join="inner")
-    common_df.replace([True, False], [1, 0], inplace=True)
-    col_to_drop = []
-    for col in df.columns:
-        if col not in common_df.columns:
-            # col_to_drop.append(list(df.columns).index(col))
-            col_to_drop.append(col)
-    df = df.drop(col_to_drop, 1)
-    df.replace([True, False], [1, 0], inplace=True)
-
-    # RANDOM FOREST
-    x = common_df[list(common_df.columns)[3:]]  # features=variables
-    y = common_df["name"]  # labels=output
-    x_pm = df[list(df.columns)[3:]]
-    ## SPLIT DATASET (TRAIN/TEST - 70/30)
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3)
-    print(f"x_train\n{x_train}")
-    print(x_train.columns)
-    # print(f"x_test\n{x_test}")
-
-    ## CREATE A GAUSSIAN CLASSIFIER
-    clf = RandomForestClassifier(n_estimators=100)  # number of trees in the forest
-    ## SELECT BEST n_estimators
-    print("BEGIN best parameters selection for Random Forest")
-    params_to_test = {"n_estimators": [50, 75, 100, 1000, 5000]}
-    grid_search = GridSearchCV(clf, params_to_test, n_jobs=4)
-    grid_search.fit(x_train, y_train)
-    print("FINISH - best parameters selection")
-    best_params = grid_search.best_params_
-    print(best_params)
-    clf = RandomForestClassifier(**best_params, random_state=42)
-
-    ## TRAIN THE MODEL USING THE TRAINING SETS y_pred = clf.predict(x_test)
-    clf.fit(x_train, y_train)
-    y_pred = clf.predict(x_test)
-
-    ## ACCURACY
-    print(f"Accuracy: {metrics.accuracy_score(y_test, y_pred)}")
-    # first iteration: Accuracy: 0.9894736842105263
-    # second, third, forth, ..., : Accuracy: 1.0
-
-    ## FEATURE IMPORTANCE
-    feature_imp = pd.Series(clf.feature_importances_, index=list(common_df.columns)[1:]).sort_values(ascending=False)
-    print(f"Feature importance:\n{feature_imp}")
-
-    ## CONFUSION MATRIX
-    conf_matrix = metrics.confusion_matrix(y_test, y_pred)
-    print(f"\nconfusion matrix\n{conf_matrix}")
-
-    ## F-measure
-    f_score = metrics.f1_score(y_test, y_pred, average="macro")
-    print(f"\nF-Measure:\t{f_score}")
-    y_test_hot_encode = [0 if el == "non_effectors" else 1 for el in y_test]
-    y_pred_hot_encode = [0 if el == "non_effectors" else 1 for el in y_pred]
-
-    precision, recall, _ = precision_recall_curve(y_test_hot_encode, y_pred_hot_encode, pos_label=1)
-    print(f"Precision coordinates: {precision}\nRecall(Sensitivity) coordinates: {recall}")
-
-    ## USE PM-SET FOR PREDICTION
-    y_pm_pred = clf.predict(x_pm)
-    predicted_pm = pd.DataFrame([["CaPm7"]*len(df), df["ID"], y_pm_pred]).transpose()
-    print(y_pm_pred)
-
-
-eff = "/home/giulia/Workspace/PhytoPhD/effectors/analysis/prediction_tools/effector_protein_feature_prediction.tsv"
-# non_eff = "/home/giulia/Workspace/PhytoPhD/effectors/analysis/prediction_tools/non_effector_protein_feature_prediction.tsv"
-non_eff = "/home/giulia/Workspace/PhytoPhD/effectors/analysis/prediction_tools/062022non_effector_protein_feature_prediction-non-effectors_feature_table.tsv"
-# df = "/home/giulia/Workspace/PhytoPhD/caliag/PMs/PM7/features_prediction/CaPm7_contig01_protein_features_prediction.xlsx - protein_features_table.tsv"
-# hydrophob_pred = "/home/giulia/Workspace/PhytoPhD/effectors/analysis/KD/hydrophob_comparisons.tsv"
-# combined_df(parse_table(eff), parse_table(non_eff), parse_table(hydrophob_pred, h=True))
-# combined_df(parse_table(eff), parse_table(non_eff))
-rfc = joblib.load("random_forest_model.pkl")
-rfc.predict()
+    args = parser.parse_args()
+    if not args.apply_model:
+        train_test_rfc()
+    else:
+        rfc = joblib.load(args.classifier)
+        rfc.predict()
 
 
 ## RESULTS AFTER HYDROPHOBICITY PROFILE ADDITION
