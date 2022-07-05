@@ -1,11 +1,48 @@
 # effectors_classifier/EFFECTOR_HUNTER
 
-## Training/Test Dataset characteristics 
-### 01072022_version
-Il set di proteine non effettrici e' il risultato del filtraggio per annotazione (tutte le proteine annotate come effettore, o con il nome di un effettore nell'annotazione, sono state rimosse), per lunghezza della sequenza proteica (tenute solo le proteine che hanno lunghezza uguale o comparabile (+- std), a quella degli effettori), per similarita' con le sequenze proteiche degli effettori (utilizzando la formula di correlazione %identita'/lunghezza dell'allineamento descritta in Rost, B. Twilight zone of protein sequence alignments. Protein Eng. 12, 85–94 (1999).
+Both positive (effector proteins) and negative (non-effector proteins) dataset are
+retrieved from Uniprot database.
 
-### merging dei set 
-Un primo dataset e' stato creato unendo il set di effettori con quello di non effettori, tenendo solo le colonne in comune. Questo e' uno dei casi piu'stringenti perche' abbiamo la classe dei negativi (non effettori) che e' molto simile alla classe positiva (effettori) quindi se raggiungioamo performance del modello buone gia' in questo caso, andando ad introdurre variabilita' successivamente, il modello dovrebbe rimanere consistente con la classificazione. 
+## Protein Selection Criteria - Filtered Out
+The negative dataset at June 2022 is composed by proteins belonging to Candi-
+datus Phytoplasma mali and other two closely related phytoplasmas, Candidatus
+Phytoplasma pruni and Peanut Witches’ Broom phytoplasma.
+A **first selection** was done by **sequence length** –> those proteins having a length
+comprised between min(positive seq length) +- standard deviaton and max(positive
+seq length) +- standard deviation were kept.
+The **second selection** was done by **alignment** of the negative proteins to the
+positive ones (BLAST). From this alignment a **threshold of protein similarity** was
+set using the formula described here _Rost, B. Twilight zone of protein sequence
+alignments. Protein Eng. 12, 85–94 (1999)_; correlating %identity and alignment
+length for each **pairwise alignment** –> those proteins having %identity below the
+similarity threshold were kept.
+`%ide < pS (n = n + 420 ∗ L−0,335∗(1+e−L/2000))`
 
-## K-fold Cross Validation
-Ho utilizzato una 5-fold cross validation fissando il seed per avere sempre la stessa base di partenza. In questo modo ottengo per ogni fold un train e un test set, per ogni fold calcolo il numero ottimale di alberi da avere nella foresta e calcolo l'accuratezza dell'algoritmo quando applicato al caso attuale. Per ogni fold mi salvo l'accuratezza e poi alla fine faccio una media di tutti i fold. Se l'accuratezza e' buona salvo il modello in un file pickle che puo' essere tranquillamente caricato quando si vuole applicare questo esatto modello ai dati reali 
+## Numbers Considered for the analysis
+- Effector proteins: 88
+- Non-Effector proteins: 252
+
+## Feature Considered
+Protein features (presence/absence, except for sequence length) considered for
+classification are:
+ - Protein length
+- Signal Peptide (SignalP 4.1 + Phobius)
+- Transmembrane Region (TMHMM + Phobius)
+-  Intrinsically disordered regions (MobiDB-lite)
+- Motifs/Profiles in AA sequence (Prosite)
+All features are considered as categorical variables, presence or absence, namely 1
+or 0 values EXCEPT FOR SEQUENCE LENGTH.
+
+## Classification
+- Method: **Random Forest**
+- Overall data-set partition and validation: **5-fold cross validation**
+- Goodness of model:
+  - Accuracy
+  - F-measure
+  - Area Under the Curve
+  - Precision-Recall Curve
+- number of variables (features): 13
+Taking into consideration only features in common between Effectors and Non-
+Effectors data-sets (to solve the problems due to motifs or profiles more abundant
+in Non-Effectors compared to Effectors and also because of the classification objective to search for the positive class characteristics)
+
