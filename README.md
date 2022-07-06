@@ -46,3 +46,10 @@ Taking into consideration only features in common between Effectors and Non-
 Effectors data-sets (to solve the problems due to motifs or profiles more abundant
 in Non-Effectors compared to Effectors and also because of the classification objective to search for the positive class characteristics)
 
+## Results on CaPm7_contig01 proteins predictions
+It classifies 14 proteins out of 462, as effectors.
+As a first check the 462 sequences were aligned to the 88 effector dataset to see if some of them are effectively similar to some of the effectors used to train the model. NONE of the alignment was sufficiently long or have a sufficiently high % of identity with the effectors. This means that basically we cannot trast BLAST alignment to "validate" our findings. 
+The second check was done intersecting the annotation of the proteins classified by the RF as effectors. These annotations are obtained aligning the predicted protein sequences of CaPm to a Uniprot database containing the complete set of known proteins in phytoplasmas. In this case we found that 3/14 classified effectors had a different annotation. At first side those annotations didn't have strong evidences against the RF classification of effectors but then searching with HMMER the domains present in the proteins into the 88 effector protein sequences, we couldn't find any matches. This means that none of the effectors considered for the training and testing of the model contains those domains. 
+
+###The question is then why the RF classify those proteins as effectors? Do we have considered too few features in describing an effector? Or do we have to extend the negative proteins set? 
+
