@@ -8,10 +8,12 @@ from sklearn import metrics  # to calculate the accuracy of the model
 from sklearn.metrics import (precision_recall_curve, PrecisionRecallDisplay, auc)
 from sklearn.model_selection import KFold
 from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.model_selection import StratifiedKFold
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 from Bio import SeqIO
 from collections import Counter
 from imblearn.under_sampling import RandomUnderSampler
+import random
 
 
 def parse_table(input_file):
@@ -26,13 +28,14 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
 
     # EFF PREDICTIONS DF for Random Forest
     eff_pred_df["name"] = ["effectors"] * len(eff_pred_df)
+    eff_pred_df = eff_pred_df.drop(["ID", "organism"], 1)
 
     # NON-EFF PREDICTIONS DF for Random Forest
     non_eff_pred_df["name"] = ["non_effectors"] * len(non_eff_pred_df)
 
     # COMBINE DFs (taking only effector motifs)
-    for col in eff_pred_df.columns[3:]:
-        if col not in non_eff_pred_df.columns[3:]:
+    for col in eff_pred_df.columns[1:]:
+        if col not in non_eff_pred_df.columns[1:]:
             # if an effector motifs is not present in non effectors, a new column will be added to the non_effector_df
             # having value False or 0 in this case
             non_eff_pred_df[col] = [0] * len(non_eff_pred_df)
@@ -42,6 +45,7 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
     # CONCAT AND CLEAN UP THE DATAFRAME FOR THE TRAINING
     # "inner" will take only common cols
     common_df = pd.concat([eff_pred_df, non_eff_pred_df], ignore_index=True, join="inner")
+    print(f"common_df: {common_df}")
     common_df.replace([True, False], [1, 0], inplace=True)
 
     # drop the column/s having the same value for all samples == ZERO VARIANCE / ALMOST ZERO VARIANCE
@@ -54,7 +58,7 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
     # shuffling is useful because positive and negative elements are ordered in the dataframe and this will help to
     # randomly pick the elements for each fold
 
-    ssskf5 = StratifiedShuffleSplit(n_splits=5, test_size=0.3, random_state=42)
+    skf5 = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     i = 1
 
     # take trace of all evaluation parameters for each k-fold
@@ -68,14 +72,15 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
     y_pred_tot = []
     y_proba = []
 
+    all_best_params = []
     # SPLITTING
-    for train_index, test_index in ssskf5.split(common_df, list(common_df["name"])):
+    for train_index, test_index in skf5.split(common_df, list(common_df["name"])):
         x_train = common_df.iloc[train_index].loc[:, list(common_df.columns)[1:]]  # all cols except the name_col
         x_test = common_df.iloc[test_index][list(common_df.columns)[1:]]
         y_train = common_df["name"].iloc[train_index]  # only the name_col
         y_test = common_df["name"].iloc[test_index]
 
-        # ith fold RANDOM FOREST
+        # kth fold RANDOM FOREST
         clf = RandomForestClassifier(n_estimators=100, random_state=42)  # n_estimators = number of trees in the forest
         ## SELECT BEST n_estimators
         print("BEGIN best parameters-n_trees selection for Random Forest")
@@ -85,7 +90,7 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
         print("FINISH - best parameters-n_trees selection")
         best_params = grid_search.best_params_
         clf = RandomForestClassifier(**best_params, random_state=42)
-
+        all_best_params.append(best_params["n_estimators"])
         ## TRAIN THE MODEL USING kth-FOLD TRAINING SETS
         clf.fit(x_train, y_train)
         ## APPLY THE MODEL
@@ -93,7 +98,7 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
 
         ## ACCURACY
         kth_accuracy = metrics.accuracy_score(y_test, y_pred)
-        print(f"TEST set accuracy for the fold no. {i}: {kth_accuracy}")
+        print(f"Training phase accuracy for the fold no. {i}: {kth_accuracy}")
         all_acc.append(kth_accuracy)
 
         ### predict probability
@@ -108,8 +113,8 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
         y_pred_hot_encode = [0 if el == "non_effectors" else 1 for el in y_pred]
         precision_perc = metrics.precision_score(y_test_hot_encode, y_pred_hot_encode, pos_label=1)
         recall_perc = metrics.recall_score(y_test_hot_encode, y_pred_hot_encode, pos_label=1)
-        print(f"Precision (TP/TP+FP) on real data: {precision_perc}")
-        print(f"Recall (TP/TP+FN) on real data: {recall_perc}")
+        print(f"Precision (TP/TP+FP) on training phase: {precision_perc}")
+        print(f"Recall (TP/TP+FN) on training phase: {recall_perc}")
         precision, recall, _ = precision_recall_curve(y_test_hot_encode, y_pred_hot_encode, pos_label=1)
         print(f"Precision coordinates: {precision}\nRecall(Sensitivity) coordinates: {recall}")
         all_prec.append(precision_perc)
@@ -123,7 +128,7 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
 
         ## CONFUSION MATRIX
         conf_matrix = metrics.confusion_matrix(y_test, y_pred)
-        print(f"\nconfusion matrix\n{conf_matrix}")
+        print(f"\nconfusion matrix on k-fold test set\n{conf_matrix}")
 
         ## FEATURE IMPORTANCE
         feat_imp = pd.Series(clf.feature_importances_, index=list(common_df.columns)[1:]).sort_values(ascending=False)
@@ -146,8 +151,14 @@ def train_test_rfc(eff_pred_df, non_eff_pred_df, path_to_out_trained_model):
     print(f"Averaged accuracy for {i-1}-fold cross validation: {np.mean(all_acc)}")
     print(f"Averaged precision for {i-1}-fold cross validation: {np.mean(all_prec)}")
     print(f"Averaged recall for {i-1}-fold cross validation: {np.mean(all_rec)}")
-    joblib.dump(trained_clf, f"{path_to_out_trained_model}/random_forest_model_acc{str(np.mean(all_acc))[:5]}_ssskfold.pkl")
-    return trained_clf
+    return np.mean(all_best_params), common_df
+
+
+def best_model(n_trees, all_training_data, path_to_out_best_rf_model):
+    best_rf = RandomForestClassifier(n_estimators=n_trees, random_state=42)
+    best_rf.fit(all_training_data[list(all_training_data.columns)[1:]], all_training_data["name"])
+    joblib.dump(best_rf, f"{path_to_out_best_rf_model}/random_forest_best_model.pkl")
+    return best_rf
 
 
 def feature_extraction_new_data(data_pred_df, eff_pred_df):
@@ -175,53 +186,34 @@ def feature_extraction_new_data(data_pred_df, eff_pred_df):
     return df_features
 
 
-def rf_positives_check(clf, annot_table):
-    annot = pd.read_csv(annot_table, sep="\t")
-    j = 0
-    k = []
-    v = []
-    # add to the classification df only those annotation for the proteins RF classify as effectors
-    for i in range(len(clf)):
-        if clf.iloc[i]["RF_model_classification"] == "effectors":
-            j += 1
-            k.append(clf.iloc[i]["CaPm7_contig01_proteins"])
-            v.append(str(list(annot[annot.columns[1:]].iloc[i])).replace("[", "").replace("]", ""))
+def test_best_model_random_labelling(clf, eff_pred_df, non_eff_pred_df):
+    # EFF PREDICTIONS DF for Random Forest
+    eff_pred_df["name"] = ["effectors"] * len(eff_pred_df)
+    eff_pred_df = eff_pred_df.drop(["ID", "organism"], 1)
+
+    # NON-EFF PREDICTIONS DF for Random Forest
+    non_eff_pred_df["name"] = ["non_effectors"] * len(non_eff_pred_df)
+
+    # COMBINE DFs (taking only effector motifs)
+    for col in eff_pred_df.columns[1:]:
+        if col not in non_eff_pred_df.columns[1:]:
+            # if an effector motifs is not present in non effectors, a new column will be added to the non_effector_df
+            # having value False or 0 in this case
+            non_eff_pred_df[col] = [0] * len(non_eff_pred_df)
         else:
-            k.append(clf.iloc[i]["CaPm7_contig01_proteins"])
-            v.append(" ")
-    cols_to_add = pd.DataFrame(list(zip(k, v)), columns=[str(clf.columns[0]), "annotation"])
-    check_df = clf.merge(cols_to_add, on=str(clf.columns[0]))
-    return check_df
+            pass
 
+    # CONCAT AND CLEAN UP THE DATAFRAME FOR THE TRAINING
+    # "inner" will take only common cols
+    common_df = pd.concat([eff_pred_df, non_eff_pred_df], ignore_index=True, join="inner")
+    common_df.replace([True, False], [1, 0], inplace=True)
 
-def parse_annot_table_to_eliminate_unknown(annot_table):
-    at = pd.read_csv(annot_table, sep="\t")
-    index_to_drop = []
-    supervised_class = []
-    for row_index in range(len(at)):
-        if "Uncharacterized" in str(at.iloc[row_index]["Protein names"]) or "nan" in str(at.iloc[row_index]["Protein names"]):
-            index_to_drop.append(row_index)
-        elif "effector" in str(at.iloc[row_index]["Protein names"]) or "Effector" in str(at.iloc[row_index]["Protein names"]) or "SAP" in str(at.iloc[row_index]["Protein names"]) or "TENGU" in str(at.iloc[row_index]["Protein names"]):
-            supervised_class.append("effectors")
-        else:
-            supervised_class.append("non_effectors")
-
-    at = at.drop(index_to_drop)
-    filt_annot = pd.DataFrame(list(zip(list(at["ID"]), supervised_class)), columns=["name", "annotation"])
-    return filt_annot, index_to_drop
-
-
-def parse_feature_table_to_eliminate_unknown(feature_table, index_to_drop):
-    ft = feature_table.drop(index_to_drop)
-    return ft
-
-
-def validation_rfc(parsed_annot_cl, real_data_clf):
-    print(f"Accuracy on real data classification: {metrics.accuracy_score(parsed_annot_cl, real_data_clf)}")
-    precision = metrics.precision_score(parsed_annot_cl, real_data_clf, labels=["effectors", "non-_effectors"], pos_label="effectors")
-    recall = metrics.recall_score(parsed_annot_cl, real_data_clf, labels=["effectors", "non-_effectors"], pos_label="effectors")
-    print(f"Precision (TP/TP+FP) on real data: {precision}")
-    print(f"Recall (TP/TP+FN) on real data: {recall}")
+    # drop the column/s having the same value for all samples == ZERO VARIANCE / ALMOST ZERO VARIANCE
+    common_df = common_df.drop("EF_HAND_1_L=(-1)", 1)
+    random.shuffle(x := list(common_df["name"]))
+    pred = clf.predict(common_df[list(common_df)[1:]])
+    acc = metrics.accuracy_score(x, pred)
+    print(acc)
 
 
 if __name__ == '__main__':
@@ -247,21 +239,21 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if not args.apply_model:
-        train_test_rfc(parse_table(args.effector_predictions),
+        best_par = train_test_rfc(parse_table(args.effector_predictions),
                        parse_table(args.non_effector_predictions),
                        args.output_path_rf)
 
+        best_model(best_par[0], best_par[1], args.output_path_rf)
+
     else:
-        annot, index = parse_annot_table_to_eliminate_unknown(args.annotations_table)
         rf_classifier = joblib.load(args.classifier)
         data = feature_extraction_new_data(parse_table(args.data), parse_table(args.effector_predictions))
         classification = rf_classifier.predict(data)
         clf_df = pd.DataFrame(list(zip(list(parse_table(args.data)["name"]), classification)),
                               columns=["name", "RF_model_classification"])
         print(clf_df["RF_model_classification"].value_counts())
-        rf_positives_check(clf_df, args.annotations_table).to_csv(f"{args.output_classification}/check_on_classification.tsv", sep="\t")
-        clf_df_filt = parse_feature_table_to_eliminate_unknown(clf_df, index)
-        validation_rfc(np.array(annot[annot.columns[1]]), np.array(clf_df_filt[clf_df_filt.columns[1]]))
+        test_best_model_random_labelling(rf_classifier, parse_table(args.effector_predictions),
+                       parse_table(args.non_effector_predictions))
 
 
 
