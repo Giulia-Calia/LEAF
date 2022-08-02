@@ -18,7 +18,7 @@ length for each **pairwise alignment** –> those proteins having %identity belo
 similarity threshold were kept.
 `%ide < pS (n = n + 420 ∗ L−0,335∗(1+e−L/2000))`
 
-The negative dataset at **August 2022** is composed by proteins belonging to ANY Candidatus phytoplasma whos annotation is MANUALLY CURATED, a publication is present, and the annotation seems to not be involved into the pathogenicity activity (no SecA-Y proteins, no SVM proteins, no trigger factors, no RuvA-B proteins, no FtsH), plus no putative, possible or recombinant proteins. 
+The negative dataset at **July-August 2022** is composed by proteins belonging to ANY Candidatus phytoplasma whos annotation is MANUALLY CURATED, a publication is present, and the annotation seems to not be involved into the pathogenicity activity (no SecA-Y proteins, no SVM proteins, no trigger factors, no RuvA-B proteins, no FtsH), plus no putative, possible or recombinant proteins. 
 Included ribosomal proteins
 
 ## Numbers Considered for the analysis
