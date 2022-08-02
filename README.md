@@ -49,6 +49,11 @@ Taking into consideration only features in common between Effectors and Non-
 Effectors data-sets (to solve the problems due to motifs or profiles more abundant
 in Non-Effectors compared to Effectors and also because of the classification objective to search for the positive class characteristics)
 
+```
+clf = RandomForestClassifier(**best_params, random_state=42, max_feature="sqrt")
+```
+****best_params** refers to number of trees in the forest and is calculated with the GridSearchCV with 4 iterations, **random_state=42** is used to set seed for future training of the model, to always start from the same point and **max_feature="sqrt"** is specified even thought is the default parameter, it allows a splitting of the features for each tree in the forest so that correlated features do not influence the decision, instead contribute more efficiently to the decision (some trees take decisions on some features, others on other features) this randomness and the combination of different decision trees will reduce the variance of the forest estimator --> reduce the overfitting typical tendency of single decision trees that presents a higher variance.  
+
 ## Results on CaPm7_contig01 proteins predictions
 It classifies 14 proteins out of 462, as effectors.
 As a first check the 462 sequences were aligned to the 88 effector dataset to see if some of them are effectively similar to some of the effectors used to train the model. NONE of the alignment was sufficiently long or have a sufficiently high % of identity with the effectors. This means that basically we cannot trast BLAST alignment to "validate" our findings. 
