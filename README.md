@@ -4,7 +4,7 @@ Both positive (effector proteins) and negative (non-effector proteins) dataset a
 retrieved from Uniprot database.
 
 ## Protein Selection Criteria - Filtered Out
-The negative dataset at June 2022 is composed by proteins belonging to Candi-
+The negative dataset at **June 2022** is composed by proteins belonging to Candi-
 datus Phytoplasma mali and other two closely related phytoplasmas, Candidatus
 Phytoplasma pruni and Peanut Witches’ Broom phytoplasma.
 A **first selection** was done by **sequence length** –> those proteins having a length
@@ -17,6 +17,9 @@ alignments. Protein Eng. 12, 85–94 (1999)_; correlating %identity and alignmen
 length for each **pairwise alignment** –> those proteins having %identity below the
 similarity threshold were kept.
 `%ide < pS (n = n + 420 ∗ L−0,335∗(1+e−L/2000))`
+
+The negative dataset at **August 2022** is composed by proteins belonging to ANY Candidatus phytoplasma whos annotation is MANUALLY CURATED, a publication is present, and the annotation seems to not be involved into the pathogenicity activity (no SecA-Y proteins, no SVM proteins, no trigger factors, no RuvA-B proteins, no FtsH), plus no putative, possible or recombinant proteins. 
+Included ribosomal proteins
 
 ## Numbers Considered for the analysis
 - Effector proteins: 88
