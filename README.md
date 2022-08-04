@@ -4,6 +4,10 @@ Both positive (effector proteins) and negative (non-effector proteins) dataset a
 retrieved from Uniprot database.
 
 ## Protein Selection Criteria - Filtered Out
+The negative dataset at **February 2022** is composed by proteins belonging to Candi-
+datus Phytoplasma mali and other two closely related phytoplasmas, Candidatus
+Phytoplasma pruni and Peanut Witches’ Broom phytoplasma. No lenght selection in the fasta used to obtain the protein prediction features for the random forest.
+
 The negative dataset at **June 2022** is composed by proteins belonging to Candi-
 datus Phytoplasma mali and other two closely related phytoplasmas, Candidatus
 Phytoplasma pruni and Peanut Witches’ Broom phytoplasma.
