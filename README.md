@@ -1,7 +1,7 @@
 # effectors_classifier/EFFECTOR_HUNTER
 
 Both positive (effector proteins) and negative (non-effector proteins) dataset are
-retrieved from Uniprot database.
+retrieved from Uniprot database since **June 2022**.
 
 ## Protein Selection Criteria - Filtered Out
 The negative dataset at **February 2022** is composed by proteins belonging to Candi-
