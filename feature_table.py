@@ -42,15 +42,10 @@ def parse_input_seq(input_s, mod_names=None, uniprot=False, prodigal=False):
             # proteins_associated_organism.append(f"Candidatus_phytoplasma_mali_({strain_name})")
             protein_length.append(len(record.seq))
 
-        elif mod_names:
+        elif mod_names is None and uniprot is False and prodigal is False:
             protein_names.append(record.id)
             protein_length.append(len(record.seq))
 
-        else:
-            print("ERR: I don't know the input file format, thus I can't help you in parsing the feature prediction "
-                  "results, please give me a fasta file coming from uniprot or prodigal")
-
-    # df_base = pd.DataFrame(list(zip(protein_names, proteins_associated_organism, protein_length)), columns=["name", "organism", "sequence length"])
     df_base = pd.DataFrame(list(zip(protein_names, protein_length)), columns=["name", "sequence length"])
 
     return df_base
@@ -68,11 +63,12 @@ def parse_signalp(input_f, uniprot=False, prodigal=False, mod_names=None):
                     name = el.split("=")[1].split("\t")[0]
                 elif mod_names:
                     name = el.split("=")[1].split("\t")[0]
+                else:
+                    name = el.split("=")[1].split("\t")[0]
 
-            if "SP='NO'" in el:
-                sp_predictions[name] = "False"
-            elif "SP='YES'" in el:
-                sp_predictions[name] = "True"
+            if el.strip().startswith("D"):
+                d_score = float(el.strip().split("  ")[-3])
+                sp_predictions[name] = d_score
             else:
                 pass
     sp_col = {"name": list(sp_predictions.keys()), "signal peptide": list(sp_predictions.values())}
@@ -80,91 +76,72 @@ def parse_signalp(input_f, uniprot=False, prodigal=False, mod_names=None):
 
 
 def parse_tmhmm(input_f, uniprot=False):
-    tm_predictions = {}
+    tm_presence = {}
+    aa_in_tm = {}
+    first_sixty_aa = {}
+    prob_n_in = {}
+    warning_sp = {}
     with open(input_f, "r") as tmhmm_file:
         file = tmhmm_file.readlines()
         for el in file:
-            if "Number of predicted TMHs:" in el and el.strip().split(" ")[-1] != "0":
-                if uniprot:
-                    name = el.split(" ")[1].split("|")[1]
-                else:
-                    name = el.split(" ")[1]
-                tm_predictions[name] = "True"
-            elif "Number of predicted TMHs:" in el and el.strip().split(" ")[-1] == "0":
-                if uniprot:
-                    name = el.split(" ")[1].split("|")[1]
-                else:
-                    name = el.split(" ")[1]
-                tm_predictions[name] = "False"
+            if uniprot and "#" in el:
+                name = el.split(" ")[1].split("|")[1]
 
-    tm_col = {'name': list(tm_predictions.keys()), "transmembrane domain": list(tm_predictions.values())}
-    return tm_col
+            elif not uniprot and "#" in el:
+                name = el.split(" ")[1]
 
-
-def parse_phobius(input_f, uniprot=False):
-    lines_list = [[]]
-    ph_predictions_sp = {}
-    ph_predictions_tm = {}
-    i = 0
-
-    with open(input_f, "r") as phob_file:
-        file = phob_file.readlines()
-        for el in file:
-            el = el.strip().split()
-            if el != ["//"] and el:
-                lines_list[i] += el
-            else:
-                lines_list.append([])
-                i += 1
-
-    for chunk in lines_list[:-1]:
-        if uniprot:
-            name = str(chunk[1]).split("|")[1]
+            if "Number of predicted TMHs:" in el:
+                tm_presence[name] = int(el.split(" ")[-1].replace("\n", ""))
+            if "Exp number of AAs in TMHs:" in el:
+                aa_in_tm[name] = float(el.split(" ")[-1].replace("\n", ""))
+            if "Exp number, first 60 AAs:" in el:
+                first_sixty_aa[name] = float(el.split(" ")[-1].replace("\n", ""))
+            if "Total prob of N-in:" in el:
+                prob_n_in[name] = float(el.split(" ")[-1].replace("\n", ""))
+            if "signal sequence" in el:
+                warning_sp[name] = "True"
+    names = (tm_presence.keys())
+    complete_warning_sp = {}
+    for n in names:
+        if n not in list(warning_sp.keys()):
+            complete_warning_sp[n] = "False"
         else:
-            name = chunk[1]
-        if "SIGNAL" in chunk and "TRANSMEM" not in chunk:
-            ph_predictions_sp[name] = "True"
-            ph_predictions_tm[name] = "False"
-
-        elif "SIGNAL" in chunk and "TRANSMEM" in chunk:
-            ph_predictions_sp[name] = "True"
-            ph_predictions_tm[name] = "True"
-
-        elif "TRANSMEM" in chunk and "SIGNAL" not in chunk:
-            ph_predictions_sp[name] = "False"
-            ph_predictions_tm[name] = "True"
-
-        elif "SIGNAL" not in chunk and "TRANSMEM" not in chunk:
-            ph_predictions_sp[name] = "False"
-            ph_predictions_tm[name] = "False"
-        else:
-            ph_predictions_sp[name] = "False"
-            ph_predictions_tm[name] = "False"
-
-    ph_cols = {"name": list(ph_predictions_sp.keys()),
-               "Phob signal peptide": list(ph_predictions_sp.values()),
-               "Phob transmembrane domain": list(ph_predictions_tm.values())}
-    return ph_cols
+            complete_warning_sp[n] = "True"
+    if len(names) == len(tm_presence) == len(aa_in_tm) == len(first_sixty_aa) == len(prob_n_in) == len(
+            complete_warning_sp):
+        tm_col = {"name": names, "transmembrane domain": list(tm_presence.values()),
+                  "aa in tr domain": list(aa_in_tm.values()), "first 60 aa": list(first_sixty_aa.values()),
+                  "prob N-in": list(prob_n_in.values()), "warning signal sequence": list(complete_warning_sp.values())}
+        return tm_col
 
 
-def parse_mobidb_lite(input_f, protein_names, mod_names=None, uniprot=False):
-    mb_empty = {"name": protein_names, "disordered regions": ["False"] * len(protein_names)}
-    mb_predictions = dict(zip(protein_names, ["False"] * len(protein_names)))
+def parse_mobidb_lite(input_f, protein_names, uniprot=False):
+    mb_empty = {"name": protein_names, "disordered regions": [0] * len(protein_names)}
+    mb_predictions = dict(zip(protein_names, [0] * len(protein_names)))
     # se file e' vuoto, allora tutta la lista e' =FALSE()
     if os.stat(input_f).st_size == 0:
         return mb_empty
     # altrimenti:
     else:
+        k = []
+        v = []
         with open(input_f, "r") as mobi_file:
-            lines = mobi_file.readlines()
-            for el in lines:
-                el = el.strip()
-                if el.startswith('"acc"'):
-                    for n in protein_names:
-                        if n in el:
-                            mb_predictions[n] = "True"
+            mobi_file = mobi_file.readlines()
+            for line in mobi_file:
+                line = line.strip()
+                if line.startswith('"acc"'):
+                    if uniprot:
+                        k.append(line.strip().split(" ")[1].split("|")[1])
+                    else:
+                        k.append(line.strip().split(" ")[1].replace('"', '').replace(",", ""))
+                if line.startswith('"consensus"'):
+                    v.append(line.strip().split(" ")[1].count("D"))
 
-        mb_col = {"name": mb_predictions.keys(), "MobiDB-lite": mb_predictions.values()}
+        mb_dict = dict(zip(k, v))
+        for k in list(mb_dict.keys()):
+            mb_predictions[k] = mb_dict[k]
+
+        mb_col = {"name": list(mb_predictions.keys()), "MobiDB-lite": list(mb_predictions.values())}
         return mb_col
 
 
@@ -191,7 +168,8 @@ def parse_prosite(input_f, protein_names, uniprot=False, prodigal=False, mod_nam
             record_id = record.id[:record.id.rfind("/")].split("|")[1]
         elif prodigal:
             record_id = record.id[:record.id.rfind("/")]
-
+        elif not uniprot and not prodigal:
+            record_id = record.id[:record.id.rfind("/")]
         if record_id not in list(dict_record_feature.keys()):
             dict_record_feature[record_id] = []
         # record_id = record.id[record.id.find("|") + 1:record.id.rfind("|")]
@@ -273,23 +251,20 @@ if __name__ == '__main__':
                         action="store_true")
     parser.add_argument("-sp", "--signalP_input")
     parser.add_argument("-tm", "--tm_input")
-    parser.add_argument("-ph", "--phob_input")
+    # parser.add_argument("-ph", "--phob_input")
     parser.add_argument("-mb", "--mobi_input")
     parser.add_argument("-pr", "--prosite_input")
     parser.add_argument("-hp", "--hydrophob_profile")
 
     args = parser.parse_args()
 
-    # print(parse_tmhmm("/home/giulia/Workspace/PhytoPhD/effectors_analysis/classification/prediction_tools/pred_non_eff20220804/tmhmm_non_eff20220729.txt",
-    #                   uniprot=True))
-    # exit(1)
     if args.mod_ids:
         # if you want to modify the uniprot ids as you declared in the .txt passed with --mod_ids
         base_df = parse_input_seq(args.input,
                                   mod_names=parse_mod_ids(args.mod_ids),
                                   uniprot=args.uniprot,
                                   prodigal=args.prodigal)
-        mb = parse_mobidb_lite(args.mobi_input, list(base_df["name"]), mod_names=parse_mod_ids(args.mod_ids),
+        mb = parse_mobidb_lite(args.mobi_input, list(base_df["name"]),
                                uniprot=args.uniprot)
     else:
         # if you do not want to modify any ids
@@ -304,15 +279,15 @@ if __name__ == '__main__':
     tm = parse_tmhmm(args.tm_input, uniprot=args.uniprot)
     sp_tm_df = sp_df.merge(pd.DataFrame(tm), on="name")
 
-    ph = parse_phobius(args.phob_input, uniprot=args.uniprot)
-    sp_tm_ph_df = sp_tm_df.merge(pd.DataFrame(ph), on="name")
+    sp_tm_mb_df = sp_tm_df.merge(pd.DataFrame(mb), on="name")
 
-    sp_tm_ph_mb_df = sp_tm_ph_df.merge(pd.DataFrame(mb), on="name")
-
-    pr = parse_prosite(args.prosite_input, list(base_df["name"]), uniprot=args.uniprot, prodigal=args.prodigal, mod_names=args.mod_ids)
-    sp_tm_ph_mb_pr_df = sp_tm_ph_mb_df.merge(pd.DataFrame(pr), on="name")
-    sp_tm_ph_mb_pr_df.to_csv(args.output_file, sep="\t", index=False)
+    pr = parse_prosite(args.prosite_input, list(base_df["name"]), uniprot=args.uniprot, prodigal=args.prodigal,
+                       mod_names=args.mod_ids)
+    print(pr)
+    sp_tm_mb_pr_df = sp_tm_mb_df.merge(pd.DataFrame(pr), on="name")
+    sp_tm_mb_pr_df.to_csv(args.output_file, sep="\t", index=False)
 
     hp = parse_hydrophob_profile(args.hydrophob_profile)
-    sp_tm_ph_mb_pr_hp_df = pd.concat([sp_tm_ph_mb_pr_df, hp], axis=1, join="inner")
-    sp_tm_ph_mb_pr_hp_df.to_csv(args.output_file, sep="\t", index=False)
+    sp_tm_mb_pr_hp_df = pd.concat([sp_tm_mb_pr_df, hp], axis=1, join="inner")
+    sp_tm_mb_pr_hp_df.to_csv(args.output_file, sep="\t", index=False)
+
