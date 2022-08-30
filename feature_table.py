@@ -80,7 +80,7 @@ def parse_tmhmm(input_f, uniprot=False):
     aa_in_tm = {}
     first_sixty_aa = {}
     prob_n_in = {}
-    warning_sp = {}
+    tr_domain = {}
     with open(input_f, "r") as tmhmm_file:
         file = tmhmm_file.readlines()
         for el in file:
@@ -99,19 +99,19 @@ def parse_tmhmm(input_f, uniprot=False):
             if "Total prob of N-in:" in el:
                 prob_n_in[name] = float(el.split(" ")[-1].replace("\n", ""))
             if "signal sequence" in el:
-                warning_sp[name] = "True"
+                tr_domain[name] = "False"
     names = (tm_presence.keys())
-    complete_warning_sp = {}
+    complete_tr_domain = {}
     for n in names:
-        if n not in list(warning_sp.keys()):
-            complete_warning_sp[n] = "False"
+        if n not in list(tr_domain.keys()):
+            complete_tr_domain[n] = "True"
         else:
-            complete_warning_sp[n] = "True"
+            complete_tr_domain[n] = "False"
     if len(names) == len(tm_presence) == len(aa_in_tm) == len(first_sixty_aa) == len(prob_n_in) == len(
-            complete_warning_sp):
+            complete_tr_domain):
         tm_col = {"name": names, "transmembrane domain": list(tm_presence.values()),
                   "aa in tr domain": list(aa_in_tm.values()), "first 60 aa": list(first_sixty_aa.values()),
-                  "prob N-in": list(prob_n_in.values()), "warning signal sequence": list(complete_warning_sp.values())}
+                  "prob N-in": list(prob_n_in.values()), "transmembrane_domain": list(complete_tr_domain.values())}
         return tm_col
 
 
