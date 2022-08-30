@@ -145,7 +145,7 @@ def parse_mobidb_lite(input_f, protein_names, uniprot=False):
         return mb_col
 
 
-def parse_prosite(input_f, protein_names, uniprot=False, prodigal=False, mod_names=None):
+def parse_prosite(input_f, protein_names, protein_length, uniprot=False, prodigal=False, mod_names=None):
     # def of feature: any type of predicted motif, pattern or profile
     record_id = ""
     uniq_list_features = []
@@ -174,31 +174,15 @@ def parse_prosite(input_f, protein_names, uniprot=False, prodigal=False, mod_nam
             dict_record_feature[record_id] = []
         # record_id = record.id[record.id.find("|") + 1:record.id.rfind("|")]
         feature_name = record.description.split(" ")[-1]  # feature = motif name
+        if feature_name.startswith("L"):
+            feature_name = str(record.description.split(" ")[-2]) + "_" + str(record.description.split(" ")[-1])
+        dict_record_feature[record_id].append(feature_name)
         if feature_name not in col_names_auto:
-            if feature_name.startswith("L"):
-                feature_name = str(record.description.split(" ")[-2]) + "_" + str(record.description.split(" ")[-1])
             col_names_auto.append(feature_name)
             pr_col[feature_name] = []
         else:
             pass
-
-        if record_id != tmp_record_id:
-            uniq_list_features = []
-            if feature_name not in uniq_list_features:
-                uniq_list_features.append(feature_name)
-                dict_record_feature[record_id].append(feature_name)
-            else:
-                pass
-        elif record_id == tmp_record_id:
-            if feature_name not in uniq_list_features:
-                uniq_list_features.append(feature_name)
-                dict_record_feature[record_id].append(feature_name)
-            else:
-                pass
-        else:
-            pass
-        tmp_record_id = record_id
-
+    print(dict_record_feature)
     # puo' essere che non tutte le sequenze contengano un pattern o un motivo quindi bisogna assicurarsi di non perdersi
     # quegli id per ricorstuire il file dopo
     complete_dict_record_feature = {}
@@ -211,14 +195,15 @@ def parse_prosite(input_f, protein_names, uniprot=False, prodigal=False, mod_nam
             complete_dict_record_feature[protein_names[i]] = []
 
     for el in complete_dict_record_feature:
-        row = []
         pr_predictions.append([])
-        for motif in col_names_auto:
-            if motif in complete_dict_record_feature[el]:
-                row.append("True")
-            else:
-                row.append("False")
+        # row = [complete_dict_record_feature[el].count(cl)/protein_length[list(complete_dict_record_feature.keys()).index(el)] for cl in col_names_auto]
+        # row = [complete_dict_record_feature[el].count(cl) for cl in col_names_auto]
+        if len(complete_dict_record_feature[el]) == 0:
+            row = [0 for cl in col_names_auto]
+        else:
+            row = [complete_dict_record_feature[el].count(cl) / len(complete_dict_record_feature[el]) for cl in col_names_auto]
         pr_predictions[list(complete_dict_record_feature.keys()).index(el)] += row
+
 
     pr_predictions_t = np.transpose(pr_predictions)
     pr_col["name"] = protein_names
@@ -228,10 +213,14 @@ def parse_prosite(input_f, protein_names, uniprot=False, prodigal=False, mod_nam
     return pr_col
 
 
-# TOBEADDED - hydrphobic profile
 def parse_hydrophob_profile(input_f):
     h_bin_cols = pd.read_csv(input_f, sep="\t")
     return h_bin_cols
+
+
+def parse_aac(input_f):
+    aac_cols = pd.read_csv(input_f, sep="\t")
+    return aac_cols
 
 
 if __name__ == '__main__':
@@ -255,6 +244,7 @@ if __name__ == '__main__':
     parser.add_argument("-mb", "--mobi_input")
     parser.add_argument("-pr", "--prosite_input")
     parser.add_argument("-hp", "--hydrophob_profile")
+    parser.add_argument("-aac", "--aacomposition")
 
     args = parser.parse_args()
 
@@ -281,13 +271,15 @@ if __name__ == '__main__':
 
     sp_tm_mb_df = sp_tm_df.merge(pd.DataFrame(mb), on="name")
 
-    pr = parse_prosite(args.prosite_input, list(base_df["name"]), uniprot=args.uniprot, prodigal=args.prodigal,
-                       mod_names=args.mod_ids)
-    print(pr)
+    pr = parse_prosite(args.prosite_input, list(base_df["name"]), list(base_df["sequence length"]), uniprot=args.uniprot, prodigal=args.prodigal,  mod_names=args.mod_ids)
     sp_tm_mb_pr_df = sp_tm_mb_df.merge(pd.DataFrame(pr), on="name")
     sp_tm_mb_pr_df.to_csv(args.output_file, sep="\t", index=False)
 
-    hp = parse_hydrophob_profile(args.hydrophob_profile)
-    sp_tm_mb_pr_hp_df = pd.concat([sp_tm_mb_pr_df, hp], axis=1, join="inner")
-    sp_tm_mb_pr_hp_df.to_csv(args.output_file, sep="\t", index=False)
+    # aac = parse_aac(args.aacomposition)
+    # sp_tm_mb_pr_aac_df = sp_tm_mb_pr_df.merge(aac, on="name")
+    # sp_tm_mb_pr_aac_df.to_csv(args.output_file, sep="\t", index=False)
+
+    # hp = parse_hydrophob_profile(args.hydrophob_profile)
+    # sp_tm_mb_pr_hp_df = pd.concat([sp_tm_mb_pr_df, hp], axis=1, join="inner")
+    # sp_tm_mb_pr_hp_df.to_csv(args.output_file, sep="\t", index=False)
 
