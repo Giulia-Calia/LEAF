@@ -161,6 +161,7 @@ def parse_prosite(input_f, protein_names, protein_length, uniprot=False, prodiga
     pr_col = {}
     names = []
     pr_predictions = []
+    motifs_sequence = []
     prosite_file = SeqIO.parse(input_f, "fasta")
     tmp_record_id = ""
     for record in prosite_file:
@@ -180,6 +181,10 @@ def parse_prosite(input_f, protein_names, protein_length, uniprot=False, prodiga
         if feature_name not in col_names_auto:
             col_names_auto.append(feature_name)
             pr_col[feature_name] = []
+        else:
+            pass
+        if record.seq not in motifs_sequence:
+            motifs_sequence.append(record.seq)
         else:
             pass
     print(dict_record_feature)
@@ -204,13 +209,15 @@ def parse_prosite(input_f, protein_names, protein_length, uniprot=False, prodiga
             row = [complete_dict_record_feature[el].count(cl) / len(complete_dict_record_feature[el]) for cl in col_names_auto]
         pr_predictions[list(complete_dict_record_feature.keys()).index(el)] += row
 
-
     pr_predictions_t = np.transpose(pr_predictions)
     pr_col["name"] = protein_names
     for i in range(len(list(pr_col.keys())[:-1])):
         pr_col[list(pr_col.keys())[i]] = list(pr_predictions_t[i])
 
-    return pr_col
+
+
+
+    return pr_col, motifs_sequence
 
 
 def parse_hydrophob_profile(input_f):
@@ -222,6 +229,9 @@ def parse_aac(input_f):
     aac_cols = pd.read_csv(input_f, sep="\t")
     return aac_cols
 
+def parse_CLUMPs(input_f):
+    CLUMPs_cols = pd.read_csv(input_f, sep="\t")
+    return CLUMPs_cols
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage="%(prog)s [options]",
@@ -245,6 +255,7 @@ if __name__ == '__main__':
     parser.add_argument("-pr", "--prosite_input")
     parser.add_argument("-hp", "--hydrophob_profile")
     parser.add_argument("-aac", "--aacomposition")
+    parser.add_argument("-cl", "--clumps")
 
     args = parser.parse_args()
 
@@ -272,9 +283,14 @@ if __name__ == '__main__':
     sp_tm_mb_df = sp_tm_df.merge(pd.DataFrame(mb), on="name")
 
     pr = parse_prosite(args.prosite_input, list(base_df["name"]), list(base_df["sequence length"]), uniprot=args.uniprot, prodigal=args.prodigal,  mod_names=args.mod_ids)
-    sp_tm_mb_pr_df = sp_tm_mb_df.merge(pd.DataFrame(pr), on="name")
+    sp_tm_mb_pr_df = sp_tm_mb_df.merge(pd.DataFrame(pr[0]), on="name")
     sp_tm_mb_pr_df.to_csv(args.output_file, sep="\t", index=False)
-
+    # with open("phyto_motifs.txt", "w") as motifs_list:
+    #     for m in pr[1]:
+    #         motifs_list.write(f"{m}\n")
+    # cl = parse_CLUMPs(args.clumps)
+    # sp_tm_mb_pr_cl_df = sp_tm_mb_pr_df.merge(pd.DataFrame(cl), on="name")
+    # sp_tm_mb_pr_cl_df.to_csv(args.output_file, sep="\t", index=False)
     # aac = parse_aac(args.aacomposition)
     # sp_tm_mb_pr_aac_df = sp_tm_mb_pr_df.merge(aac, on="name")
     # sp_tm_mb_pr_aac_df.to_csv(args.output_file, sep="\t", index=False)
