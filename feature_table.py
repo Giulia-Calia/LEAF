@@ -2,300 +2,270 @@ import numpy as np
 import pandas as pd
 import argparse
 import os
+import re
 from Bio import SeqIO
-from Bio.SeqUtils.ProtParam import ProteinAnalysis
-from Bio.SeqUtils.ProtParam import ProtParamData
-from sklearn.preprocessing import MinMaxScaler
-from scipy.stats import binned_statistic
-from scipy.stats import pearsonr
 
 
-def parse_mod_ids(name_match):
-    return pd.read_csv(name_match, header=None)[0].values.tolist()
+def merge_dfs(df1, df2):
+    return df1.merge(df2, on="seq_id", how="left").fillna(0)
 
 
-def parse_input_seq(input_s, mod_names=None, uniprot=False, prodigal=False):
-    # CREATE THE BASIC DF TO WHICH ADD ALL THE COLUMNS OF INTEREST
-    # THE FILE MUST HAVE BEEN DOWNLOADED FROM UNIPROT OR PRODIGAL
-    parsed_file = SeqIO.parse(input_s, "fasta")
+def find_motif_start_pos(motif, sequence):
+    # Find all indices of 'motif'
+    indices_object = re.finditer(pattern=str(motif), string=str(sequence))
+    indices = [index.start() for index in indices_object]
+    return indices
 
-    protein_names = []
-    # proteins_associated_organism = []
-    protein_length = []
-    for record in parsed_file:
-        if uniprot:
-            name = record.id.split("|")[1]
-            if mod_names is not None:
-                for n in mod_names:
-                    if len(name) == len(mod_names):
-                        name = n
-            protein_names.append(name)
-            # record_desc = record.description.replace("[", "").replace("'", "").replace("]", "").replace(",", "")
-            # if OS= or OX= are not present, the organism is the same as the record.id without the prefix
-            # org = record_desc[record_desc.find("OS=") + 3:record_desc.rfind("OX=")]
-            # proteins_associated_organism.append(org)
-            protein_length.append(len(record.seq))
-
-        elif prodigal:
-            strain_name = record.id[:record.id.find("_")]
-            protein_names.append(record.id)
-            # proteins_associated_organism.append(f"Candidatus_phytoplasma_mali_({strain_name})")
-            protein_length.append(len(record.seq))
-
-        elif mod_names is None and uniprot is False and prodigal is False:
-            protein_names.append(record.id)
-            protein_length.append(len(record.seq))
-
-    df_base = pd.DataFrame(list(zip(protein_names, protein_length)), columns=["name", "sequence length"])
-
-    return df_base
-
-
-def parse_signalp(input_f, uniprot=False, prodigal=False, mod_names=None):
-    sp_predictions = {}
-    with open(input_f, "r") as signalp_file:
-        file = signalp_file.readlines()
-        for el in file:
-            if el.startswith("# Name="):
-                if uniprot:
-                    name = el.split("|")[1]
-                elif prodigal:
-                    name = el.split("=")[1].split("\t")[0]
-                elif mod_names:
-                    name = el.split("=")[1].split("\t")[0]
-                else:
-                    name = el.split("=")[1].split("\t")[0]
-
-            if el.strip().startswith("D"):
-                d_score = float(el.strip().split("  ")[-3])
-                sp_predictions[name] = d_score
-            else:
-                pass
-    sp_col = {"name": list(sp_predictions.keys()), "signal peptide": list(sp_predictions.values())}
-    return sp_col
-
-
-def parse_tmhmm(input_f, uniprot=False):
-    tm_presence = {}
-    aa_in_tm = {}
-    first_sixty_aa = {}
-    prob_n_in = {}
-    tr_domain = {}
-    with open(input_f, "r") as tmhmm_file:
-        file = tmhmm_file.readlines()
-        for el in file:
-            if uniprot and "#" in el:
-                name = el.split(" ")[1].split("|")[1]
-
-            elif not uniprot and "#" in el:
-                name = el.split(" ")[1]
-
-            if "Number of predicted TMHs:" in el:
-                tm_presence[name] = int(el.split(" ")[-1].replace("\n", ""))
-            if "Exp number of AAs in TMHs:" in el:
-                aa_in_tm[name] = float(el.split(" ")[-1].replace("\n", ""))
-            if "Exp number, first 60 AAs:" in el:
-                first_sixty_aa[name] = float(el.split(" ")[-1].replace("\n", ""))
-            if "Total prob of N-in:" in el:
-                prob_n_in[name] = float(el.split(" ")[-1].replace("\n", ""))
-            if "signal sequence" in el:
-                tr_domain[name] = "False"
-    names = (tm_presence.keys())
-    complete_tr_domain = {}
-    for n in names:
-        if n not in list(tr_domain.keys()):
-            complete_tr_domain[n] = "True"
-        else:
-            complete_tr_domain[n] = "False"
-    if len(names) == len(tm_presence) == len(aa_in_tm) == len(first_sixty_aa) == len(prob_n_in) == len(
-            complete_tr_domain):
-        tm_col = {"name": names, "transmembrane domain": list(tm_presence.values()),
-                  "aa in tr domain": list(aa_in_tm.values()), "first 60 aa": list(first_sixty_aa.values()),
-                  "prob N-in": list(prob_n_in.values()), "transmembrane_domain": list(complete_tr_domain.values())}
-        return tm_col
-
-
-def parse_mobidb_lite(input_f, protein_names, uniprot=False):
-    mb_empty = {"name": protein_names, "disordered regions": [0] * len(protein_names)}
-    mb_predictions = dict(zip(protein_names, [0] * len(protein_names)))
-    # se file e' vuoto, allora tutta la lista e' =FALSE()
-    if os.stat(input_f).st_size == 0:
-        return mb_empty
-    # altrimenti:
-    else:
-        k = []
-        v = []
-        with open(input_f, "r") as mobi_file:
-            mobi_file = mobi_file.readlines()
-            for line in mobi_file:
-                line = line.strip()
-                if line.startswith('"acc"'):
-                    if uniprot:
-                        k.append(line.strip().split(" ")[1].split("|")[1])
-                    else:
-                        k.append(line.strip().split(" ")[1].replace('"', '').replace(",", ""))
-                if line.startswith('"consensus"'):
-                    v.append(line.strip().split(" ")[1].count("D"))
-
-        mb_dict = dict(zip(k, v))
-        for k in list(mb_dict.keys()):
-            mb_predictions[k] = mb_dict[k]
-
-        mb_col = {"name": list(mb_predictions.keys()), "MobiDB-lite": list(mb_predictions.values())}
-        return mb_col
-
-
-def parse_prosite(input_f, protein_names, protein_length, uniprot=False, prodigal=False, mod_names=None):
-    # def of feature: any type of predicted motif, pattern or profile
-    record_id = ""
-    uniq_list_features = []
-    # for each record=protein, all the feature assigned to it
-    dict_record_feature = {}
-    # --probable pattern or motifs in effectors--
-    # ["CK2_PHOSPHO_SITE", "MYRISTYL", "PKC_PHOSPHO_SITE", "ASN_GLYCOSYLATION",
-    # "CAMP_PHOSPHO_SITE", "AMIDATION", "TYR_PHOSPHO_SITE_1", "L=(-1)"]
-
-    # list of any kind of feature predicted by prosite
-    col_names_auto = []
-    # list of lists with presence/absence of the feature for each protein
-    pr_col = {}
-    names = []
-    pr_predictions = []
-    motifs_sequence = []
-    prosite_file = SeqIO.parse(input_f, "fasta")
-    tmp_record_id = ""
-    for record in prosite_file:
-        if uniprot:
-            record_id = record.id[:record.id.rfind("/")].split("|")[1]
-        elif prodigal:
-            record_id = record.id[:record.id.rfind("/")]
-        elif not uniprot and not prodigal:
-            record_id = record.id[:record.id.rfind("/")]
-        if record_id not in list(dict_record_feature.keys()):
-            dict_record_feature[record_id] = []
-        # record_id = record.id[record.id.find("|") + 1:record.id.rfind("|")]
-        feature_name = record.description.split(" ")[-1]  # feature = motif name
-        if feature_name.startswith("L"):
-            feature_name = str(record.description.split(" ")[-2]) + "_" + str(record.description.split(" ")[-1])
-        dict_record_feature[record_id].append(feature_name)
-        if feature_name not in col_names_auto:
-            col_names_auto.append(feature_name)
-            pr_col[feature_name] = []
-        else:
-            pass
-        if record.seq not in motifs_sequence:
-            motifs_sequence.append(record.seq)
-        else:
-            pass
-    print(dict_record_feature)
-    # puo' essere che non tutte le sequenze contengano un pattern o un motivo quindi bisogna assicurarsi di non perdersi
-    # quegli id per ricorstuire il file dopo
-    complete_dict_record_feature = {}
-    for i in range(len(protein_names)):
-        # cioe' se le due liste non hanno stessa lunghezza aggiungi le posizioni(id) mancanti ad un nuovo dizionario che
-        # le conterra' insieme a quelle gia' esistenti
-        if protein_names[i] in list(dict_record_feature.keys()):
-            complete_dict_record_feature[protein_names[i]] = dict_record_feature[protein_names[i]]
-        else:
-            complete_dict_record_feature[protein_names[i]] = []
-
-    for el in complete_dict_record_feature:
-        pr_predictions.append([])
-        # row = [complete_dict_record_feature[el].count(cl)/protein_length[list(complete_dict_record_feature.keys()).index(el)] for cl in col_names_auto]
-        # row = [complete_dict_record_feature[el].count(cl) for cl in col_names_auto]
-        if len(complete_dict_record_feature[el]) == 0:
-            row = [0 for cl in col_names_auto]
-        else:
-            row = [complete_dict_record_feature[el].count(cl) / len(complete_dict_record_feature[el]) for cl in col_names_auto]
-        pr_predictions[list(complete_dict_record_feature.keys()).index(el)] += row
-
-    pr_predictions_t = np.transpose(pr_predictions)
-    pr_col["name"] = protein_names
-    for i in range(len(list(pr_col.keys())[:-1])):
-        pr_col[list(pr_col.keys())[i]] = list(pr_predictions_t[i])
-
-
-
-
-    return pr_col, motifs_sequence
-
-
-def parse_hydrophob_profile(input_f):
-    h_bin_cols = pd.read_csv(input_f, sep="\t")
-    return h_bin_cols
-
-
-def parse_aac(input_f):
-    aac_cols = pd.read_csv(input_f, sep="\t")
-    return aac_cols
-
-def parse_CLUMPs(input_f):
-    CLUMPs_cols = pd.read_csv(input_f, sep="\t")
-    return CLUMPs_cols
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage="%(prog)s [options]",
                                      description="",
                                      epilog="")
     parser.add_argument("-mi", "--mod_ids",
-                        help=".txt file with a single column of name of effector class associated with a protein id "
+                        help=".txt file with a single column of name of effector "
+                             "class associated with a protein id "
                              "e.g.: TENGU_A0A4P6MDK8")
+
     parser.add_argument("-i", "--input",
                         help="fasta file with protein sequences")
     parser.add_argument("-o", "--output_file",
-                        help="path and name of the output file")
+                        help="path and name of the output file, a .tsv table of features ")
     parser.add_argument("-u", "--uniprot",
                         action="store_true")
     parser.add_argument("-p", "--prodigal",
                         action="store_true")
-    parser.add_argument("-sp", "--signalP_input")
-    parser.add_argument("-tm", "--tm_input")
-    # parser.add_argument("-ph", "--phob_input")
-    parser.add_argument("-mb", "--mobi_input")
-    parser.add_argument("-pr", "--prosite_input")
-    parser.add_argument("-hp", "--hydrophob_profile")
-    parser.add_argument("-aac", "--aacomposition")
-    parser.add_argument("-cl", "--clumps")
+    parser.add_argument("-sp", "--signalP_input",
+                        help="SignalP output file in .txt format")
+    parser.add_argument("-tm", "--tm_input",
+                        help="TMHMM output file in .txt format")
+    parser.add_argument("-mb", "--mobi_input",
+                        help="MobiDB-lite output file in .txt format")
+    parser.add_argument("-pr", "--prosite_input",
+                        help="Prosite output file in .fasta format")
+    parser.add_argument("-prm", "--prosite_motifs",
+                        help=".txt file used also as input for MOnSTER with a motif per line predicted in the "
+                             "training positive_class")
+    parser.add_argument("-ms", "--monster_scores",
+                        help="MOnSTER summary output")
+    parser.add_argument("-mmc", "--monster_mot_clump",
+                        help="one of MOnSTER output file having as columns motif|CLUMP")
+    parser.add_argument("--eff", help="if the fasta contains effector sequences",
+                        action="store_true")
+    parser.add_argument("--noneff", help="if the fasta contains non effector sequences",
+                        action="store_true")
 
     args = parser.parse_args()
 
-    if args.mod_ids:
-        # if you want to modify the uniprot ids as you declared in the .txt passed with --mod_ids
-        base_df = parse_input_seq(args.input,
-                                  mod_names=parse_mod_ids(args.mod_ids),
-                                  uniprot=args.uniprot,
-                                  prodigal=args.prodigal)
-        mb = parse_mobidb_lite(args.mobi_input, list(base_df["name"]),
-                               uniprot=args.uniprot)
+    # PARSING INPUT FASTA #
+    input_proteins = {}  # a dictionary representation of a fasta file {protein_id: AA_sequence, ...}
+    proteins_length = []
+    proteins_name = []
+    for record in SeqIO.parse(args.input, "fasta"):
+        input_proteins[str(record.id)] = str(record.seq)
+        proteins_length.append(len(str(record.seq)))
+        proteins_name.append(str(record.id))
+
+    name_list = []
+    if args.eff:
+        name_list = ["effector"] * len(input_proteins)
+    elif args.noneff:
+        name_list = ["non_effector"] * len(input_proteins)
     else:
-        # if you do not want to modify any ids
-        base_df = parse_input_seq(args.input,
-                                  uniprot=args.uniprot,
-                                  prodigal=args.prodigal)
-        mb = parse_mobidb_lite(args.mobi_input, list(base_df["name"]), uniprot=args.uniprot)
+        name_list = ["to_be_predicted"] * len(input_proteins)
+    # 'returns' name_length_cols = a df with columns = protein ids, name of belonging class (effector or not)
+    # and respective protein length
+    name_length_cols = pd.DataFrame({"seq_id": proteins_name,
+                                     "name": name_list,
+                                     "sequence length": proteins_length})
+    # SIGNALP #
+    # 'returns' df_sp = a df with 3 columns = protein names, sequence length and signal peptide feature
+    sp_predictions = {}
+    with open(args.signalP_input, "r") as signalp_file:
+        file = signalp_file.readlines()
+        for line in file:
+            # from line like Name=tr|A0A0A8JCG0|A0A0A8JCG0_9MOLU	SP='YES'    ...
+            if line.startswith("Name="):
+                tmp_id = line.split("\t")[0][line.split("\t")[0].find("=") + 1:]
+                sp_in_line = line.split("\t")[1].split(" ")[0]
+                sp_signal = str(sp_in_line[sp_in_line.find("=") + 2: -1])
+                d_score_in_line = line.split("\t")[1][line.split("\t")[1].find("D=") + 2:]
+                # if there is a signal peptide
+                if sp_signal == "YES":
+                    # e.g. Name=tr|A0A0A8JCG0|A0A0A8JCG0_9MOLU	SP='YES' Cleavage site pos. 34 and 35: VMG-MN D=0.696
+                    d_score = float(d_score_in_line[:d_score_in_line.find(" ")])
+                    sp_predictions[tmp_id] = d_score
+                else:
+                    pass
+            else:
+                pass
 
-    sp = parse_signalp(args.signalP_input, uniprot=args.uniprot, prodigal=args.prodigal, mod_names=args.mod_ids)
-    sp_df = base_df.merge(pd.DataFrame(sp), on="name")
+    df_sp_predictions = pd.DataFrame({"seq_id": list(sp_predictions.keys()),
+                                      "signal peptide": list(sp_predictions.values())})
+    # if not all the proteins are predicted to have a signal peptide, reconstruct the exact order of the proteins
+    # merging the perv df with the new one having signalP predictions
+    df_sp = merge_dfs(name_length_cols, df_sp_predictions)
 
-    tm = parse_tmhmm(args.tm_input, uniprot=args.uniprot)
-    sp_tm_df = sp_df.merge(pd.DataFrame(tm), on="name")
+    # TMHMM #
+    # 'returns' df_sp_tm = a df with 8 columns = protein names, sequence length, signal peptide feature,
+    # transmembrane domain,	aa in tr domain, first 60 aa, prob N-in, warning signal sequence
 
-    sp_tm_mb_df = sp_tm_df.merge(pd.DataFrame(mb), on="name")
+    tm_features = ["transmembrane domain", "aa in tr domain", "first 60 aa",
+                   "prob N-in", "warning signal sequence"]
+    tm_presence = {}
+    aa_in_tm = {}
+    first_sixty_aa = {}
+    prob_n_in = {}
+    warning_on_sp = {}
 
-    pr = parse_prosite(args.prosite_input, list(base_df["name"]), list(base_df["sequence length"]), uniprot=args.uniprot, prodigal=args.prodigal,  mod_names=args.mod_ids)
-    sp_tm_mb_pr_df = sp_tm_mb_df.merge(pd.DataFrame(pr[0]), on="name")
-    sp_tm_mb_pr_df.to_csv(args.output_file, sep="\t", index=False)
-    # with open("phyto_motifs.txt", "w") as motifs_list:
-    #     for m in pr[1]:
-    #         motifs_list.write(f"{m}\n")
-    # cl = parse_CLUMPs(args.clumps)
-    # sp_tm_mb_pr_cl_df = sp_tm_mb_pr_df.merge(pd.DataFrame(cl), on="name")
-    # sp_tm_mb_pr_cl_df.to_csv(args.output_file, sep="\t", index=False)
-    # aac = parse_aac(args.aacomposition)
-    # sp_tm_mb_pr_aac_df = sp_tm_mb_pr_df.merge(aac, on="name")
-    # sp_tm_mb_pr_aac_df.to_csv(args.output_file, sep="\t", index=False)
+    # an entry in tmhmm output is like 
+    # # tr|A0A0A8JCG0|A0A0A8JCG0_9MOLU Length: 125
+    # # tr|A0A0A8JCG0|A0A0A8JCG0_9MOLU Number of predicted TMHs:  1
+    # # tr|A0A0A8JCG0|A0A0A8JCG0_9MOLU Exp number of AAs in TMHs: 20.43649
+    # ...
+    # so the construction of the features is pretty straight forward
+    with open(args.tm_input, "r") as tmhmm_file:
+        file = tmhmm_file.readlines()
+        for line in file:
+            if line.startswith("#"):
+                name = line.split(" ")[1]
+                if "Number of predicted TMHs:" in line:
+                    tm_presence[name] = int(line.split(" ")[-1].replace("\n", ""))
+                if "Exp number of AAs in TMHs:" in line:
+                    aa_in_tm[name] = float(line.split(" ")[-1].replace("\n", ""))
+                if "Exp number, first 60 AAs:" in line:
+                    first_sixty_aa[name] = float(line.split(" ")[-1].replace("\n", ""))
+                if "Total prob of N-in:" in line:
+                    prob_n_in[name] = float(line.split(" ")[-1].replace("\n", ""))
+                # if there is a tm domain but there is also the possibility of a signal peptide, this
+                # feature become 1 = True, 0 otherwise
+                if "signal sequence" in line:
+                    warning_on_sp[name] = 1
+                else:
+                    warning_on_sp[name] = 0
 
-    # hp = parse_hydrophob_profile(args.hydrophob_profile)
-    # sp_tm_mb_pr_hp_df = pd.concat([sp_tm_mb_pr_df, hp], axis=1, join="inner")
-    # sp_tm_mb_pr_hp_df.to_csv(args.output_file, sep="\t", index=False)
+    df_tm_predictions = pd.DataFrame({"seq_id": list(tm_presence.keys()),
+                                      tm_features[0]: list(tm_presence.values()),
+                                      tm_features[1]: list(aa_in_tm.values()),
+                                      tm_features[2]: list(first_sixty_aa.values()),
+                                      tm_features[3]: list(prob_n_in.values()),
+                                      tm_features[4]: list(warning_on_sp.values())
+                                      })
+    # the merging assure that even if there are some missing proteins in the tmhmm output,
+    # they will be added to the dataframe in the same order of the input fasta file and their
+    # values are filled with 0 value
+    df_sp_tm = merge_dfs(df_sp, df_tm_predictions)
 
+    # MOBIDB-LITE #
+    #  # 'returns' df_sp_tm = a df with 9 columns = protein names, sequence length, signal peptide feature,
+    #     # transmembrane domain,	aa in tr domain, first 60 aa, prob N-in, warning signal sequence, MobiDB-lite
+
+    # if the file is empty, no disordered regions are found so return a 0 columns
+    if os.stat(args.mobi_input).st_size == 0:
+        mb_empty = pd.DataFrame({"seq_id": proteins_name, "MobiDB-lite": [0] * len(proteins_name)})
+        df_sp_tm_mb = merge_dfs(df_sp_tm, mb_empty)
+
+    # otherwise the entry would be like:
+    # {
+    # "acc": "tr|A0A1S9LYF9|A0A1S9LYF9_9MOLU",
+    #     # "consensus": "SSSSSSSSSSSSSSSSSSSSSSSSDDDDDDDDDDDDDDDDDDDDD", ...
+    else:
+        # mb_predictions = {"seq_id": proteins_name, "MobiDB-lite": [0] * len(proteins_name)}
+        k = []
+        v = []
+        with open(args.mobi_input, "r") as mobi_file:
+            mobi_file = mobi_file.readlines()
+            for line in mobi_file:
+                line = line.strip()
+                if line.startswith('"acc"'):
+                    k.append(line.split(" ")[1].replace('"', '').replace(",", ""))
+                if line.startswith('"consensus"'):
+                    v.append(int(line.split(" ")[1].count("D")))
+
+        # mb_predictions = dict(zip(k, v))
+        df_mb_predictions = pd.DataFrame({"seq_id": k, "MobiDB-lite": v})
+        df_sp_tm_mb = merge_dfs(df_sp_tm, df_mb_predictions)
+
+    motif_list = list(pd.read_csv(args.prosite_motifs, header=None)[0])
+    # PROSITE #
+    # parse the PROSITE output file of effector class to build up a dictionary containing
+    # {functional name of motifs: associated sequences}
+    pros_mot = {}
+    for record in SeqIO.parse(args.prosite_input, "fasta"):
+        func_name = record.description.strip().split(" ")[-1]
+        pros_mot[str(record.seq)] = func_name
+
+    pros_mot_occ = {}
+    for protein in list(input_proteins.keys()):
+        pros_mot_occ[protein] = {}
+        for m in list(pros_mot.keys()):
+            mot_pres = find_motif_start_pos(m, input_proteins[protein])
+            if mot_pres:
+                if pros_mot[m] not in list(pros_mot_occ[protein].keys()):
+                    pros_mot_occ[protein][pros_mot[m]] = len(mot_pres)
+                else:
+                    pros_mot_occ[protein][pros_mot[m]] += len(mot_pres)
+        for fn in list(np.unique(list(pros_mot.values()))):
+            if fn not in (pros_mot_occ[protein].keys()):
+                pros_mot_occ[protein][fn] = 0
+
+    df_pros_mot = pd.DataFrame(pros_mot_occ).transpose()
+    df_pros_mot.reset_index(inplace=True)
+    df_pros_mot = df_pros_mot.rename(columns={"index": "seq_id"})
+
+    # CLUMPs #
+    monster_sc = pd.read_csv(args.monster_scores, sep=",", header=0)[["CLUMP", "monster_score"]]
+    selected_clumps = list(
+        monster_sc["CLUMP"][monster_sc["monster_score"] > np.mean(list(monster_sc["monster_score"]))])
+    selected_clumps.sort()
+    monster_motsclumps = pd.read_csv(args.monster_mot_clump, sep=",", header=0)
+
+    clump_features = {}
+    for protein in list(input_proteins.keys()):
+        clump_features[protein] = [0] * len(selected_clumps)
+        for motif in motif_list:
+            tmp_clump = list(monster_motsclumps["CLUMP"][monster_motsclumps["motif"] == motif])[0]
+            # if motif in str(input_proteins[protein]) and tmp_clump in selected_clumps:
+            if motif in str(input_proteins[protein]) and tmp_clump in selected_clumps:
+                clump_features[protein][selected_clumps.index(tmp_clump)] += 1
+
+    df_clump = pd.DataFrame(clump_features, index=[f"CLUMP{c}" for c in selected_clumps]).transpose()
+    df_clump.reset_index(inplace=True)
+    df_clump = df_clump.rename(columns={"index": "seq_id"})
+
+    # CLUMPs positions #
+    in_protein_bins = {}
+    for protein in list(input_proteins.keys()):
+        in_protein_bins[protein] = dict(zip([f"bin{i + 1}" for i in range(4)], [0 for i in range(4)]))
+
+        # here comes the assign to the corresponding bin of each motifs belonging to each of the selected clumps
+        for motif in motif_list:
+            tmp_pos = find_motif_start_pos(motif, input_proteins[protein])
+
+            for p in tmp_pos:  # all positions of motifs on seq
+                tmp_norm_pos = int(p) / len(input_proteins[protein])  # normalized position with the seq len (0-100%)
+                # find the motifs in the MOnSTER output to see at which CLUMP it belongs
+                clump_belong = list(monster_motsclumps["CLUMP"][monster_motsclumps["motif"] == motif])
+                # if the motifs finds a corresponding clump in the MOnSTER output and the clump is in the ones selected
+                if clump_belong and clump_belong[0] in selected_clumps:
+                    if tmp_norm_pos <= 0.25:  # 0-25% of the sequence = bin1
+                        in_protein_bins[protein]["bin1"] += 1
+                    elif 0.25 < tmp_norm_pos <= 0.50:  # 26-50% of the sequence = bin2
+                        in_protein_bins[protein]["bin2"] += 1
+                    elif 0.50 < tmp_norm_pos <= 0.75:  # 51-75% of the sequence = bin3
+                        in_protein_bins[protein]["bin3"] += 1
+                    else:  # 76-100% of the sequence = bin4
+                        in_protein_bins[protein]["bin4"] += 1
+                else:
+                    pass
+
+    df_clumps_pos = pd.DataFrame(in_protein_bins).transpose()
+    df_clumps_pos.reset_index(inplace=True)
+    df_clumps_pos = df_clumps_pos.rename(columns={"index": "seq_id"})
+    # merge df_clumps into one clump feature and then all together
+    df_clump_features = merge_dfs(df_clump, df_clumps_pos)
+
+    # FINAL DF OF FEATURES #
+    df_sp_tm_mb_pr = merge_dfs(df_sp_tm_mb, df_pros_mot)
+    df_sp_tm_mb_pr_cl = merge_dfs(df_sp_tm_mb_pr, df_clump_features)
+    # OUTPUT #
+    df_sp_tm_mb_pr_cl.to_csv(f"{args.output_file}.tsv", sep="\t", index=False)
