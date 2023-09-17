@@ -40,14 +40,15 @@ ui <- fluidPage(
                sidebarPanel(selectInput(
                inputId = "clouds_color",
                label = "Choose how to color the Cloudplot",
-               choices = c("origin",	"vote",	"model",	"ncs",	"PCA_group"),
+               choices = c("origin",	"ncs",	"PCA_group"),
                selected = "ncs"
-               )),
+               ),
+               downloadButton("download")),
                # Show SOM
                mainPanel(htmlOutput("cloud_som"))
                )),
     tabPanel("SOM-Barplot",
-             # give possible som label-colors
+             # give possible som label-bars
              sidebarLayout(
                sidebarPanel(selectInput(
                  inputId = "bars",
@@ -57,12 +58,25 @@ ui <- fluidPage(
                               "prob N-in","MobiDB-lite"),
                  multiple = TRUE,
                  selectize = TRUE
-               )),
+               ),
+               textInput("text", label = "Insert output file name", value = "Enter text..."),
+               downloadButton("download1")),
                # Show SOM
                mainPanel(htmlOutput("bar_som"))
                )),
-    tabPanel("SOM-Pieplot"),
-    tabPanel("Download")
+    tabPanel("SOM-Pieplot",
+             sidebarLayout(
+               sidebarPanel(selectInput(
+                 inputId = "pie_label",
+                 label = "Choose which features to plot",
+                 choices = c("spec_id", "16S_group", "model", "vote"),
+                 selected = c("spec_id")
+               ),
+               downloadButton("download2")),
+               # Show SOM
+               mainPanel(htmlOutput("pie_som"))
+             )),
+    tabPanel("Download subDataset")
   )
 )
 
@@ -95,7 +109,11 @@ server <- function(input, output) {
     variables = c(input$clouds_color))})
   
   output$cloud_som <- renderUI({cloud_som_plot()})
-  
+  output$download <- downloadHandler(
+    filename = function() {paste("LEAF_SOM_clouds_", input$clouds_color, '.html', sep='')},
+    content = function(file) {
+      saveWidget(cloud_som_plot(), file)
+    })
   ### BARPLOT
   bar_som_plot <- reactive({aweSOMplot(
     som = data.som, 
@@ -105,8 +123,25 @@ server <- function(input, output) {
     values = "prototype")})
   
   output$bar_som <- renderUI({bar_som_plot()})
-  
+  output$download1 <- downloadHandler(
+    filename = function() {paste(input$text, '.html', sep='')},
+    content = function(file) {
+      saveWidget(bar_som_plot(), file)
+    })
   ### PIEPLOT
+  pie_som_plot <- reactive({aweSOMplot(
+    som = data.som, 
+    type = "Pie", 
+    data = dset, 
+    variables = input$pie_label)})
+  
+  output$pie_som <- renderUI({pie_som_plot()})
+  output$download2 <- downloadHandler(
+    filename = function() {paste("LEAF_SOM_pie_", input$pie_label, '.html', sep='')},
+    content = function(file) {
+      saveWidget(pie_som_plot(), file)
+    })
+
 }
 
 # Run the application 
