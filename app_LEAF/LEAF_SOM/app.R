@@ -16,11 +16,13 @@ library(bslib)
 
 # load dataset 
 dset <- read_tsv("/home/giulia/Workspace/PhytoPhD/period_abroad/functional_analysis/unify_scaled_comp_choice_ALL_dset_func_analysis.tsv")
+dset_to_subset <- read_tsv("/home/giulia/Workspace/PhytoPhD/period_abroad/functional_analysis/predicted_eff_to_subset_shiny.tsv")
 features_colnames <- c("sequence length","signal peptide","transmembrane domain","aa in tr domain","first 60 aa",
                        "prob N-in","MobiDB-lite", 
                        "CAMP_PHOSPHO_SITE", "PKC_PHOSPHO_SITE", "CK2_PHOSPHO_SITE", "MYRISTYL", "AMIDATION", "ASN_GLYCOSYLATION","L=0", 
                        "LEUCINE_ZIPPER","MICROBODIES_CTER", "RGD", "TYR_PHOSPHO_SITE_1", "TYR_PHOSPHO_SITE_2",
                        "CLUMP0","CLUMP3","CLUMP5","CLUMP6","CLUMP7","CLUMP8", "bin1", "bin2", "bin3", "bin4")
+
 features <- as.matrix(dset[, features_colnames])
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -76,16 +78,25 @@ ui <- fluidPage(
                # Show SOM
                mainPanel(htmlOutput("pie_som"))
              )),
-    tabPanel("Download subDataset")
-  )
+    tabPanel("Download subDataset",             
+             sidebarLayout(
+                sidebarPanel(selectInput(
+                  inputId = "cells",
+                  label = "Choose which SOM_cell to download",
+                  choices = c(1:64),
+                  selected = 1,
+                  selectize = TRUE
+                ),
+                downloadButton("download3")),
+                mainPanel(DTOutput("dataset"))
+       )
+  ))
 )
 
   
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  output$dataset = DT::renderDataTable({
-    features
-    })
+  
   
   ### RNG Seed (for reproducibility)
   set.seed(42)
@@ -141,6 +152,18 @@ server <- function(input, output) {
     content = function(file) {
       saveWidget(pie_som_plot(), file)
     })
+  ### Add column to dset with the cell assignment for each protein
+  dset_to_subset["cell"] <- data.som[["unit.classif"]]
+  cell_to_download = reactive({input$cells})
+  output$dataset = DT::renderDataTable({
+    subset(dset_to_subset, cell == cell_to_download())
+  })
+  output$download3 <- downloadHandler(
+    filename = function() {paste("LEAF_SOM_cell", input$cells, "seq.tsv", sep="\t")},
+    content = function(file) {
+      write_tsv(subset(dset_to_subset, cell == cell_to_download()), file)
+    }
+  )
 
 }
 
