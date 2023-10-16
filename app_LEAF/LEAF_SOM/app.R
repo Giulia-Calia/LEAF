@@ -15,8 +15,8 @@ library(bslib)
 
 
 # load dataset 
-dset <- read_tsv("/home/giulia/Workspace/PhytoPhD/period_abroad/functional_analysis/unify_scaled_comp_choice_ALL_dset_func_analysis.tsv")
-dset_to_subset <- read_tsv("/home/giulia/Workspace/PhytoPhD/period_abroad/functional_analysis/predicted_eff_to_subset_shiny.tsv")
+dset <- read_tsv("../tables/proteomes_putative_eff_scaled.tsv")
+dset_to_subset <- read_tsv("../tables/subsetting_tab.tsv")
 features_colnames <- c("sequence length","signal peptide","transmembrane domain","aa in tr domain","first 60 aa",
                        "prob N-in","MobiDB-lite", 
                        "CAMP_PHOSPHO_SITE", "PKC_PHOSPHO_SITE", "CK2_PHOSPHO_SITE", "MYRISTYL", "AMIDATION", "ASN_GLYCOSYLATION","L=0", 
@@ -61,7 +61,7 @@ ui <- fluidPage(
                  multiple = TRUE,
                  selectize = TRUE
                ),
-               textInput("text", label = "Insert output file name", value = "Enter text..."),
+               textInput("text", label = "Output file name", value = "Enter text..."),
                downloadButton("download1")),
                # Show SOM
                mainPanel(htmlOutput("bar_som"))
@@ -85,8 +85,10 @@ ui <- fluidPage(
                   label = "Choose which SOM_cell to download",
                   choices = c(1:64),
                   selected = 1,
+                  multiple = TRUE,
                   selectize = TRUE
                 ),
+                textInput("text1", label = "Output file name", value = "Enter text..."),
                 downloadButton("download3")),
                 mainPanel(DTOutput("dataset"))
        )
@@ -158,8 +160,12 @@ server <- function(input, output) {
   output$dataset = DT::renderDataTable({
     subset(dset_to_subset, cell == cell_to_download())
   })
+  #output$download3 <- downloadHandler(
+    #filename = function() {paste("LEAF_SOM_cell", input$cells, "seq.tsv", sep="\t")},
+    #content = function(file) {
+     #write_tsv(subset(dset_to_subset, cell == cell_to_download()), file)
   output$download3 <- downloadHandler(
-    filename = function() {paste("LEAF_SOM_cell", input$cells, "seq.tsv", sep="\t")},
+    filename = function() {paste(input$text1, ".tsv", sep="\t")},
     content = function(file) {
       write_tsv(subset(dset_to_subset, cell == cell_to_download()), file)
     }
