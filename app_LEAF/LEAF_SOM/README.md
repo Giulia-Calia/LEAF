@@ -5,9 +5,6 @@ In the last tab of the app it is possible to retrieve information on proteins be
 ## Usage
 Command line 
 ```
-R
-```
-```
-shiny::runApp('./app_LEAF/LEAF_SOM')
+R -e "shiny::runApp('./app_LEAF/LEAF_SOM')"
 ```
 The app will directly read as input the files contained in ./app_LEAF/tables directory
