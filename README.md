@@ -7,6 +7,31 @@
 ## Usage
 LEAF can be used as a stand-alone script or with the available singularity3.7 container (recommended)
 
+### LEAF from container
+To properly use LEAF you can download the directory and execute the LEAF1.0.sh file in the container
+
+**---LEAF.sh help---**
+```
+-first argument: -dft/pre_computed_feature_table.tsv	use "-dft" (do feature table) if no pre-computed feature table is available (LEAF will start the prediction of the features and feature table build-up)
+							use /path/to/pre_computed_feature_table.tsv otherwise
+							(the column in feature_table must be in the same order of those in training_feature_tables.tsv) 
+if -dft:
+	-second argument: path/to/protein_sequence.fasta	the input file in FASTA format containing AA sequences (can be a selection of proteins or an entire proteome)
+	-third argument: path/to/output_directory			ouput directory in which to save both feature predictions/feature table/LEAF putative effector prediction 
+	-fourth argument: suffix/prefix						to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
+
+otherwise:
+	-second argument: path/to/output_directory			ouput directory in which to save LEAF putative effector prediction 
+	-third argument: prefix								to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
+```
+**Container Usage**
+```
+singularity exec -B binding/dirs LEAF1.0.simg /opt/LEAF.sh -dft /path/to/aa_sequences.fasta /path/to/output_dir suffix/prefix
+```
+**or**
+```
+singularity exec -B /binding/dirs LEAF1.0.simg /opt/LEAF.sh /path/to/feature_table.tsv /path/to/output_dir prefix
+```
 ### LEAF stand-alone 
 The required python3.8.10 libraries are:
 - biopython
@@ -57,31 +82,6 @@ python3.8.10 ./build_feature_table.py -i /path/to/aa_sequences.fasta\
 **Predict putative effector proteins with LEAF**
 ```
 python3.8.10 ./LEAF1.0.py -ft /path/to/feature_table_name.tsv -o /path/to/output_dir -px distinguishable_name 
-```
-### LEAF from container
-To properly use LEAF you can download the directory and execute the LEAF1.0.sh file in the container\
-
-**---LEAF.sh help---**
-```
--first argument: -dft/pre_computed_feature_table.tsv	use "-dft" (do feature table) if no pre-computed feature table is available / /path/to/pre_computed_feature_table.tsv otherwise
-                                                      	LEAF will start the prediction of the features and feature table build-up
-														(the column in feature_table must be in the same order of those in training_feature_tables.tsv) 
-if -dft:
-	-second argument: path/to/protein_sequence.fasta	the input file in FASTA format containing AA sequences (can be a selection of proteins or an entire proteome)
-	-third argument: path/to/output_directory			ouput directory in which to save both feature predictions/feature table/LEAF putative effector prediction 
-	-fourth argument: suffix/prefix						to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
-
-otherwise:
-	-second argument: path/to/output_directory			ouput directory in which to save LEAF putative effector prediction 
-	-third argument: prefix								to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
-```
-**Container Usage**
-```
-singularity exec -B binding/dirs LEAF1.0.simg /opt/LEAF.sh -dft /path/to/aa_sequences.fasta /path/to/output_dir suffix/prefix
-```
-**or**
-```
-singularity exec -B /binding/dirs LEAF1.0.simg /opt/LEAF.sh /path/to/feature_table.tsv /path/to/output_dir prefix
 ```
 
 ## Feature Considered
