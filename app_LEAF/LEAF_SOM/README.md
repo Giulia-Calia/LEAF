@@ -10,8 +10,14 @@ In the last tab of the app it is possible to retrieve information on proteins be
 - bslib (used here v0.5.1)
   
 ## Usage
-Command line 
+**Command line** 
 ```
-R -e "shiny::runApp('./app_LEAF/LEAF_SOM')"
+R -e "shiny::runApp('./')"
 ```
-The app will directly read, as inputs, the 2 files contained in ./app_LEAF/tables directory
+The app will directly read, as inputs, the 2 files contained in ./app_LEAF/tables directory 
+
+**Using the provided singularity container**
+```
+singularity exec -B binding/dirs ./LEAF1.0_SOM.simg R -e "shiny::runApp('./')"
+```
+**Copy and paste the URL written on terminal after the application opening**
