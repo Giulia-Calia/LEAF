@@ -8,7 +8,7 @@
 LEAF can be used as a stand-alone script or with the available singularity3.7 container (recommended)
 
 ### LEAF from container
-To properly use LEAF you can download the directory and execute the LEAF1.0.sh file in the container
+To properly use LEAF you can clone the directory and execute the LEAF1.0.sh file in the provided container
 
 **---LEAF.sh help---**
 ```
@@ -41,7 +41,8 @@ The required python3.8.10 libraries are:
 The required software to be installed separately or used by other containers (e.g. singularity), are:
 - SignalP - v4.1
 - TMHMM - v2.0
-- MobiDB-lite
+- MobiDB-lite - v3.0
+- (Prosite - v1.86 if you are changing the training set of +)
 
 To properly use LEAF you can download the directory and execute the following steps:
 
