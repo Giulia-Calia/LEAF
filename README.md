@@ -1,8 +1,10 @@
 # LEAF - (phytopLasmas Effector prediction via rAndom Forest/tobe changed)
---description--
+LEAF is an ensemble machine learning predictor able to classify effector proteins form other function-generic proteins. It is compose by 4 classification models: Random Forest, XGBoost, Gaussian Naive Bayes and Multinomial Naive Bayes. 
 
+LEAF output is a binary classification of proteins (effector/non effector), associated with the models agreement. 
+To be considered effector, a protein has to reach a correcteness prediction-probability >= 90% by at least one of the models. 
 
-
+This repository contains both LEAF source code and scripts to build-up the feature tables necessary for its application along with a Singularity3.7 container for a smoother usage of this effector proteins predictor. Moreover in directory ```app_LEAF/LEAF_SOM/``` a Shiny App showing different configuration of Self-Organizing-Maps it's available to explore the results from LEAF application to 13 phytoplasma proteomes. The Shiny App usage is explained in the ```README_SOM.md``` file in the aforementioned directory
 
 ## Usage
 LEAF can be used as a stand-alone script or with the available singularity3.7 container (recommended)
@@ -17,12 +19,12 @@ To properly use LEAF you can clone the directory and execute the LEAF1.0.sh file
 							(the column in feature_table must be in the same order of those in training_feature_tables.tsv) 
 if -dft:
 	-second argument: path/to/protein_sequence.fasta	the input file in FASTA format containing AA sequences (can be a selection of proteins or an entire proteome)
-	-third argument: path/to/output_directory			ouput directory in which to save both feature predictions/feature table/LEAF putative effector prediction 
-	-fourth argument: suffix/prefix						to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
+	-third argument: path/to/output_directory		ouput directory in which to save both feature predictions/feature table/LEAF putative effector prediction 
+	-fourth argument: suffix/prefix				to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
 
 otherwise:
-	-second argument: path/to/output_directory			ouput directory in which to save LEAF putative effector prediction 
-	-third argument: prefix								to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
+	-second argument: path/to/output_directory		ouput directory in which to save LEAF putative effector prediction 
+	-third argument: prefix					to distinguish the current run of LEAF (e.g. strain name, CaPmali_AT)
 ```
 **Container Usage**
 ```
